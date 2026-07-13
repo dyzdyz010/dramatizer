@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dramatizer.local/schemas/v0.2/provider-request-snapshot.schema.json",
+  "title": "Provider Request Snapshot Contract",
+  "type": "object",
+  "required": ["provider_request_snapshots", "extensions"],
+  "properties": {
+    "provider_request_snapshots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/providerRequestSnapshot" }
+    },
+    "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "resolvedInput": {
+      "type": "object",
+      "required": ["name", "asset_version_id", "content_hash", "media_type", "resolved_uri_hash", "extensions"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "asset_version_id": { "type": "string", "minLength": 1 },
+        "content_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "media_type": { "type": "string", "minLength": 1 },
+        "resolved_uri_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "additionalProperties": false
+    },
+    "encryptedPayloadRef": {
+      "type": "object",
+      "required": ["object_key", "encryption_key_ref", "ciphertext_hash", "content_encoding"],
+      "properties": {
+        "object_key": { "type": "string", "minLength": 1 },
+        "encryption_key_ref": { "type": "string", "minLength": 1 },
+        "ciphertext_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "content_encoding": { "type": "string", "enum": ["json", "multipart_manifest"] }
+      },
+      "additionalProperties": false
+    },
+    "safePreviewField": {
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "type": ["string", "number", "boolean", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "providerRequestSnapshot": {
+      "type": "object",
+      "required": ["id", "provider_attempt_id", "resolved_execution_plan_id", "generation_spec_revision_id", "generation_spec_hash", "provider_id", "model_id", "model_version", "adapter_version", "request_compiler_version", "request_contract_version", "endpoint_id", "provider_submission_key", "rights_gate_snapshot_id", "rights_gate_snapshot_hash", "rights_gate_decision", "rights_gate_valid_until", "intended_use_hash", "resolved_inputs", "canonical_payload_hash", "snapshot_hash", "encrypted_payload_ref", "redacted_preview", "secrets_excluded", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "provider_attempt_id": { "type": "string", "minLength": 1 },
+        "resolved_execution_plan_id": { "type": "string", "minLength": 1 },
+        "generation_spec_revision_id": { "type": "string", "minLength": 1 },
+        "generation_spec_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "model_id": { "type": "string", "minLength": 1 },
+        "model_version": { "type": "string", "minLength": 1 },
+        "adapter_version": { "type": "string", "minLength": 1 },
+        "request_compiler_version": { "type": "string", "minLength": 1 },
+        "request_contract_version": { "type": "string", "minLength": 1 },
+        "endpoint_id": { "type": "string", "minLength": 1 },
+        "provider_submission_key": { "type": "string", "minLength": 1 },
+        "rights_gate_snapshot_id": { "type": "string", "minLength": 1 },
+        "rights_gate_snapshot_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "rights_gate_decision": { "const": "allowed" },
+        "rights_gate_valid_until": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "intended_use_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "resolved_inputs": { "type": "array", "items": { "$ref": "#/$defs/resolvedInput" } },
+        "canonical_payload_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "snapshot_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "encrypted_payload_ref": { "$ref": "#/$defs/encryptedPayloadRef" },
+        "redacted_preview": { "type": "array", "items": { "$ref": "#/$defs/safePreviewField" } },
+        "secrets_excluded": { "const": true },
+        "created_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

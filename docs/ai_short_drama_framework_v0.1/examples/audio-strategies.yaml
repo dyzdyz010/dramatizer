@@ -1,0 +1,31 @@
+audio_strategies:
+  seedance_native:
+    source: seedance-2.0
+    dialogue_authority: model_generated_until_approved
+    required_qc:
+      - transcript_match
+      - voice_consistency
+      - lip_sync_score
+      - loudness
+
+  gpt_sovits_first:
+    source: gpt-sovits
+    dialogue_authority: script_authoritative
+    feed_audio_to_video_model: true
+    lip_sync: qc_then_optional_repair
+
+  hybrid:
+    dialogue: gpt-sovits
+    ambience_and_foley: seedance-native
+    separation: optional
+
+  seedance_derived_sfx:
+    source_video: seedance-2.0
+    extraction: ffmpeg
+    postprocess:
+      - trim
+      - remove_silence
+      - denoise_if_needed
+      - normalize_loudness
+      - limiter
+    register_in_library_after_approval: true

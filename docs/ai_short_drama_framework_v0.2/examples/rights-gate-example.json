@@ -1,0 +1,345 @@
+{
+  "rights_gate_snapshots": [
+    {
+      "id": "rgs_video_generation_allowed",
+      "scope": "generation",
+      "subject_id": "gt_video_01",
+      "provider_id": "seedance",
+      "input_refs": [
+        {
+          "entity_type": "asset_version",
+          "id": "assetv_12345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "rights_record_refs": [
+        {
+          "entity_type": "rights_record",
+          "logical_id": "rights_character_lin",
+          "revision_id": "rev_12345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "consent_refs": [
+        {
+          "entity_type": "consent_record",
+          "logical_id": "consent_voice_lin",
+          "revision_id": "rev_22345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "provider_policy_revision": {
+        "entity_type": "provider_policy",
+        "logical_id": "provider_policy_seedance",
+        "revision_id": "rev_32345678-1234-4234-8234-123456789abc"
+      },
+      "intended_use": {
+        "purpose": "generation",
+        "channels": ["internal_production"],
+        "regions": ["CN"],
+        "commercial_use": true,
+        "derivative_use": true,
+        "provider_processing": true,
+        "provider_training_allowed": false,
+        "provider_retention_days": 7,
+        "valid_from": "2026-07-13T08:00:00Z",
+        "valid_until": "2026-07-20T00:00:00Z"
+      },
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "decision": "allowed",
+      "findings": [
+        {
+          "code": "portrait_commercial_derivative_allowed",
+          "subject": {
+            "entity_type": "asset_version",
+            "id": "assetv_12345678-1234-4234-8234-123456789abc"
+          },
+          "status": "satisfied",
+          "severity": "info",
+          "reason": "Pinned consent and rights revisions cover the intended provider processing and commercial derivative use.",
+          "evidence_refs": [
+            {
+              "entity_type": "consent_record",
+              "logical_id": "consent_voice_lin",
+              "revision_id": "rev_22345678-1234-4234-8234-123456789abc"
+            }
+          ],
+          "extensions": []
+        }
+      ],
+      "policy_revision_id": "rev_42345678-1234-4234-8234-123456789abc",
+      "evaluated_by": { "actor_type": "policy", "actor_id": "rights_gate_v1" },
+      "evaluated_at": "2026-07-13T08:04:00Z",
+      "valid_until": "2026-07-20T00:00:00Z",
+      "snapshot_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "extensions": []
+    },
+    {
+      "id": "rgs_video_generation_seedance_demo_allowed",
+      "scope": "generation",
+      "subject_id": "gt_video_fallback_demo",
+      "provider_id": "seedance",
+      "input_refs": [
+        {
+          "entity_type": "asset_version",
+          "id": "assetv_12345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "rights_record_refs": [
+        {
+          "entity_type": "rights_record",
+          "logical_id": "rights_character_lin",
+          "revision_id": "rev_12345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "consent_refs": [
+        {
+          "entity_type": "consent_record",
+          "logical_id": "consent_voice_lin",
+          "revision_id": "rev_22345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "provider_policy_revision": {
+        "entity_type": "provider_policy",
+        "logical_id": "provider_policy_seedance",
+        "revision_id": "rev_32345678-1234-4234-8234-123456789abc"
+      },
+      "intended_use": {
+        "purpose": "generation",
+        "channels": ["internal_production"],
+        "regions": ["CN"],
+        "commercial_use": true,
+        "derivative_use": true,
+        "provider_processing": true,
+        "provider_training_allowed": false,
+        "provider_retention_days": 7,
+        "valid_from": "2026-07-13T08:00:00Z",
+        "valid_until": "2026-07-20T00:00:00Z"
+      },
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "decision": "allowed",
+      "findings": [
+        {
+          "code": "seedance_provider_processing_allowed",
+          "subject": {
+            "entity_type": "asset_version",
+            "id": "assetv_12345678-1234-4234-8234-123456789abc"
+          },
+          "status": "satisfied",
+          "severity": "info",
+          "reason": "Pinned records cover the seedance provider policy and intended use.",
+          "evidence_refs": [],
+          "extensions": []
+        }
+      ],
+      "policy_revision_id": "rev_42345678-1234-4234-8234-123456789abc",
+      "evaluated_by": { "actor_type": "policy", "actor_id": "rights_gate_v1" },
+      "evaluated_at": "2026-07-13T08:05:01Z",
+      "valid_until": "2026-07-20T00:00:00Z",
+      "snapshot_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "extensions": []
+    },
+    {
+      "id": "rgs_video_generation_backup_allowed",
+      "scope": "generation",
+      "subject_id": "gt_video_fallback_demo",
+      "provider_id": "backup_video",
+      "input_refs": [
+        {
+          "entity_type": "asset_version",
+          "id": "assetv_12345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "rights_record_refs": [
+        {
+          "entity_type": "rights_record",
+          "logical_id": "rights_character_lin",
+          "revision_id": "rev_12345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "consent_refs": [
+        {
+          "entity_type": "consent_record",
+          "logical_id": "consent_voice_lin",
+          "revision_id": "rev_22345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "provider_policy_revision": {
+        "entity_type": "provider_policy",
+        "logical_id": "provider_policy_backup_video",
+        "revision_id": "rev_92345678-1234-4234-8234-123456789abc"
+      },
+      "intended_use": {
+        "purpose": "generation",
+        "channels": ["internal_production"],
+        "regions": ["CN"],
+        "commercial_use": true,
+        "derivative_use": true,
+        "provider_processing": true,
+        "provider_training_allowed": false,
+        "provider_retention_days": 7,
+        "valid_from": "2026-07-13T08:00:00Z",
+        "valid_until": "2026-07-20T00:00:00Z"
+      },
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "decision": "allowed",
+      "findings": [
+        {
+          "code": "backup_provider_processing_allowed",
+          "subject": {
+            "entity_type": "asset_version",
+            "id": "assetv_12345678-1234-4234-8234-123456789abc"
+          },
+          "status": "satisfied",
+          "severity": "info",
+          "reason": "The same source rights cover the pinned backup provider policy and intended use.",
+          "evidence_refs": [],
+          "extensions": []
+        }
+      ],
+      "policy_revision_id": "rev_a2345678-1234-4234-8234-123456789abc",
+      "evaluated_by": { "actor_type": "policy", "actor_id": "rights_gate_v1" },
+      "evaluated_at": "2026-07-13T08:20:01Z",
+      "valid_until": "2026-07-20T00:00:00Z",
+      "snapshot_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "extensions": []
+    },
+    {
+      "id": "rgs_render_ep01_allowed",
+      "scope": "render",
+      "subject_id": "release_candidate_01",
+      "provider_id": "internal_render_farm",
+      "input_refs": [
+        {
+          "entity_type": "timeline_version",
+          "id": "timelinev_62345678-1234-4234-8234-123456789abc"
+        },
+        {
+          "entity_type": "asset_version",
+          "id": "assetv_72345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "rights_record_refs": [
+        {
+          "entity_type": "rights_record",
+          "logical_id": "rights_render_ep01",
+          "revision_id": "rev_b2345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "consent_refs": [],
+      "provider_policy_revision": {
+        "entity_type": "provider_policy",
+        "logical_id": "provider_policy_internal_render",
+        "revision_id": "rev_c2345678-1234-4234-8234-123456789abc"
+      },
+      "intended_use": {
+        "purpose": "internal_export",
+        "channels": ["internal_production"],
+        "regions": ["CN"],
+        "commercial_use": false,
+        "derivative_use": true,
+        "provider_processing": false,
+        "provider_training_allowed": false,
+        "provider_retention_days": 0,
+        "valid_from": "2026-07-13T08:55:00Z",
+        "valid_until": "2026-07-20T00:00:00Z"
+      },
+      "intended_use_hash": "sha256:4040404040404040404040404040404040404040404040404040404040404040",
+      "decision": "allowed",
+      "findings": [
+        {
+          "code": "internal_render_use_allowed",
+          "subject": {
+            "entity_type": "timeline_version",
+            "id": "timelinev_62345678-1234-4234-8234-123456789abc"
+          },
+          "status": "satisfied",
+          "severity": "info",
+          "reason": "Pinned rights permit internal rendering of the exact timeline input closure.",
+          "evidence_refs": [],
+          "extensions": []
+        }
+      ],
+      "policy_revision_id": "rev_d2345678-1234-4234-8234-123456789abc",
+      "evaluated_by": { "actor_type": "policy", "actor_id": "rights_gate_v1" },
+      "evaluated_at": "2026-07-13T08:59:00Z",
+      "valid_until": "2026-07-20T00:00:00Z",
+      "snapshot_hash": "sha256:1919191919191919191919191919191919191919191919191919191919191919",
+      "extensions": []
+    },
+    {
+      "id": "rgs_music_release_manual",
+      "scope": "release",
+      "subject_id": "release_candidate_01",
+      "provider_id": "douyin",
+      "input_refs": [
+        {
+          "entity_type": "asset_version",
+          "id": "assetv_52345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "rights_record_refs": [
+        {
+          "entity_type": "rights_record",
+          "logical_id": "rights_music_cue_one",
+          "revision_id": "rev_62345678-1234-4234-8234-123456789abc"
+        }
+      ],
+      "consent_refs": [],
+      "provider_policy_revision": {
+        "entity_type": "provider_policy",
+        "logical_id": "provider_policy_douyin",
+        "revision_id": "rev_72345678-1234-4234-8234-123456789abc"
+      },
+      "intended_use": {
+        "purpose": "release",
+        "channels": ["douyin"],
+        "regions": ["CN"],
+        "commercial_use": true,
+        "derivative_use": false,
+        "provider_processing": true,
+        "provider_training_allowed": false,
+        "provider_retention_days": 365,
+        "valid_from": "2026-07-13T08:00:00Z",
+        "valid_until": "2027-07-13T08:00:00Z"
+      },
+      "intended_use_hash": "sha256:bcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbcbc",
+      "decision": "manual_review",
+      "findings": [
+        {
+          "code": "music_channel_scope_unclear",
+          "subject": {
+            "entity_type": "asset_version",
+            "id": "assetv_52345678-1234-4234-8234-123456789abc"
+          },
+          "status": "manual_review",
+          "severity": "error",
+          "reason": "The pinned license revision does not unambiguously name the target channel.",
+          "evidence_refs": [],
+          "extensions": []
+        }
+      ],
+      "human_task_id": "human_rights_music_release",
+      "policy_revision_id": "rev_82345678-1234-4234-8234-123456789abc",
+      "evaluated_by": { "actor_type": "policy", "actor_id": "rights_gate_v1" },
+      "evaluated_at": "2026-07-13T08:04:00Z",
+      "valid_until": "2026-07-14T08:04:00Z",
+      "snapshot_hash": "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+      "extensions": []
+    }
+  ],
+  "human_tasks": [
+    {
+      "id": "human_rights_music_release",
+      "rights_gate_snapshot_id": "rgs_music_release_manual",
+      "status": "waiting",
+      "required_role": "rights_reviewer",
+      "allowed_actions": ["approve_scope", "reject", "request_evidence", "cancel"],
+      "form_schema_ref": "https://dramatizer.local/forms/rights-review/v1",
+      "claim_timeout_seconds": 900,
+      "sla_at": "2026-07-13T12:04:01Z",
+      "hard_deadline_at": "2026-07-14T08:04:00Z",
+      "escalation_policy_revision_id": "rights_escalation_policy_r2",
+      "created_at": "2026-07-13T08:04:01Z",
+      "extensions": []
+    }
+  ],
+  "extensions": []
+}

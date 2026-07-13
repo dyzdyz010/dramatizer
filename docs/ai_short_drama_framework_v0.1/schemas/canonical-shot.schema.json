@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/canonical-shot.schema.json",
+  "title": "CanonicalShot",
+  "type": "object",
+  "required": [
+    "id",
+    "scene_id",
+    "shot_class",
+    "narrative_purpose",
+    "duration_ms",
+    "camera",
+    "audio_strategy",
+    "planned_state"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "scene_id": {
+      "type": "string"
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "shot_class": {
+      "type": "string",
+      "enum": [
+        "DIALOGUE_CLOSEUP",
+        "DIALOGUE_TWO_SHOT",
+        "REACTION",
+        "ACTION_COMPLEX",
+        "CAMERA_MOVE",
+        "ENVIRONMENT_ESTABLISHING",
+        "OBJECT_INSERT",
+        "TRANSITION",
+        "CROWD"
+      ]
+    },
+    "narrative_purpose": {
+      "type": "string",
+      "minLength": 1
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 250,
+      "maximum": 60000
+    },
+    "characters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "character_version_id"
+        ],
+        "properties": {
+          "character_version_id": {
+            "type": "string"
+          },
+          "wardrobe_version_id": {
+            "type": "string"
+          },
+          "pose": {
+            "type": "string"
+          },
+          "gaze_target": {
+            "type": "string"
+          },
+          "emotion": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "camera": {
+      "type": "object",
+      "required": [
+        "shot_size",
+        "angle",
+        "movement"
+      ],
+      "properties": {
+        "shot_size": {
+          "type": "string"
+        },
+        "angle": {
+          "type": "string"
+        },
+        "movement": {
+          "type": "string"
+        }
+      }
+    },
+    "audio_strategy": {
+      "type": "string",
+      "enum": [
+        "no_dialogue",
+        "seedance_native",
+        "gpt_sovits_first",
+        "hybrid",
+        "voice_over"
+      ]
+    },
+    "planned_state": {
+      "type": "object"
+    },
+    "detected_state": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "approved_state": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "approval_status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "ready_for_generation",
+        "generated",
+        "ready_for_review",
+        "approved",
+        "rejected",
+        "repair_required",
+        "regenerate_required"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,787 @@
+{
+  "workflow_definition": {
+    "id": "wf_shot_video_v1",
+    "version": 3,
+    "graph_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "completion_mode": "allow_partial",
+    "nodes": [
+      {
+        "id": "generate_video",
+        "kind": "task",
+        "handler": "generation.submit_video.v2",
+        "capability_mode": "AUTOMATED",
+        "depends_on": [],
+        "input_bindings": [
+          {
+            "target": "/generation_spec_revision_id",
+            "source": "workflow_input",
+            "source_pointer": "/generation_spec_revision_id",
+            "required": true,
+            "extensions": []
+          }
+        ],
+        "output_bindings": [
+          {
+            "name": "asset_version_ids",
+            "source_pointer": "/asset_version_ids",
+            "extensions": []
+          }
+        ],
+        "required_for_run": true,
+        "execution_policy": {
+          "timeout_seconds": 1800,
+          "cancel_grace_seconds": 30,
+          "retry_policy": {
+            "max_attempts": 3,
+            "backoff": "exponential",
+            "initial_delay_seconds": 5,
+            "max_delay_seconds": 120,
+            "jitter": true,
+            "retryable_categories": ["rate_limit", "provider_transient", "timeout"],
+            "extensions": []
+          },
+          "stale_input_policy": "block",
+          "on_exhausted": "allow_partial",
+          "extensions": []
+        },
+        "extensions": []
+      },
+      {
+        "id": "fanout_qc",
+        "kind": "fan_out",
+        "capability_mode": "RULE_BASED",
+        "depends_on": ["generate_video"],
+        "input_bindings": [
+          {
+            "target": "/assets",
+            "source": "dependency_output",
+            "source_node_id": "generate_video",
+            "source_pointer": "/asset_version_ids",
+            "required": true,
+            "extensions": []
+          }
+        ],
+        "output_bindings": [],
+        "fan_out": {
+          "collection_pointer": "/assets",
+          "item_name": "asset_version_id",
+          "max_parallelism": 4,
+          "extensions": []
+        },
+        "required_for_run": true,
+        "execution_policy": {
+          "timeout_seconds": 30,
+          "cancel_grace_seconds": 1,
+          "retry_policy": {
+            "max_attempts": 1,
+            "backoff": "fixed",
+            "initial_delay_seconds": 0,
+            "max_delay_seconds": 0,
+            "jitter": false,
+            "retryable_categories": [],
+            "extensions": []
+          },
+          "stale_input_policy": "allow_pinned_snapshot",
+          "on_exhausted": "fail_run",
+          "extensions": []
+        },
+        "extensions": []
+      },
+      {
+        "id": "technical_qc",
+        "kind": "task",
+        "handler": "qc.media_technical.v1",
+        "capability_mode": "RULE_BASED",
+        "depends_on": ["fanout_qc"],
+        "input_bindings": [
+          {
+            "target": "/asset_version_id",
+            "source": "fanout_item",
+            "source_pointer": "/",
+            "required": true,
+            "extensions": []
+          }
+        ],
+        "output_bindings": [
+          {
+            "name": "quality_report_id",
+            "source_pointer": "/quality_report_id",
+            "extensions": []
+          }
+        ],
+        "required_for_run": true,
+        "execution_policy": {
+          "timeout_seconds": 300,
+          "cancel_grace_seconds": 10,
+          "retry_policy": {
+            "max_attempts": 2,
+            "backoff": "fixed",
+            "initial_delay_seconds": 10,
+            "max_delay_seconds": 10,
+            "jitter": false,
+            "retryable_categories": ["internal"],
+            "extensions": []
+          },
+          "stale_input_policy": "allow_pinned_snapshot",
+          "on_exhausted": "allow_partial",
+          "extensions": []
+        },
+        "extensions": []
+      },
+      {
+        "id": "qc_join",
+        "kind": "join",
+        "capability_mode": "RULE_BASED",
+        "depends_on": ["technical_qc"],
+        "input_bindings": [],
+        "output_bindings": [
+          {
+            "name": "successful_reports",
+            "source_pointer": "/successful_reports",
+            "extensions": []
+          }
+        ],
+        "join": {
+          "strategy": "minimum_successful",
+          "minimum_successful": 1,
+          "cancel_remaining_after_satisfied": false,
+          "extensions": []
+        },
+        "required_for_run": true,
+        "execution_policy": {
+          "timeout_seconds": 30,
+          "cancel_grace_seconds": 1,
+          "retry_policy": {
+            "max_attempts": 1,
+            "backoff": "fixed",
+            "initial_delay_seconds": 0,
+            "max_delay_seconds": 0,
+            "jitter": false,
+            "retryable_categories": [],
+            "extensions": []
+          },
+          "stale_input_policy": "allow_pinned_snapshot",
+          "on_exhausted": "fail_run",
+          "extensions": []
+        },
+        "extensions": []
+      },
+      {
+        "id": "needs_human_review",
+        "kind": "condition",
+        "capability_mode": "RULE_BASED",
+        "depends_on": ["qc_join"],
+        "input_bindings": [],
+        "output_bindings": [],
+        "condition": {
+          "language": "cel_v1",
+          "expression": "size(outputs.successful_reports) > 0",
+          "true_targets": ["human_select"],
+          "false_targets": [],
+          "extensions": []
+        },
+        "required_for_run": true,
+        "execution_policy": {
+          "timeout_seconds": 30,
+          "cancel_grace_seconds": 1,
+          "retry_policy": {
+            "max_attempts": 1,
+            "backoff": "fixed",
+            "initial_delay_seconds": 0,
+            "max_delay_seconds": 0,
+            "jitter": false,
+            "retryable_categories": [],
+            "extensions": []
+          },
+          "stale_input_policy": "allow_pinned_snapshot",
+          "on_exhausted": "fail_run",
+          "extensions": []
+        },
+        "extensions": []
+      },
+      {
+        "id": "human_select",
+        "kind": "human_gate",
+        "capability_mode": "MANUAL",
+        "depends_on": ["needs_human_review"],
+        "input_bindings": [],
+        "output_bindings": [],
+        "human_gate": {
+          "form_schema_ref": "schema://review/candidate-selection/v1",
+          "allowed_actions": ["approve", "reject", "request_change", "cancel"],
+          "required_role": "candidate_reviewer",
+          "claim_timeout_seconds": 900,
+          "sla_seconds": 7200,
+          "hard_deadline_seconds": 86400,
+          "escalation_policy_revision_id": "human_escalation_policy_r3",
+          "extensions": []
+        },
+        "required_for_run": true,
+        "execution_policy": {
+          "timeout_seconds": 86400,
+          "cancel_grace_seconds": 1,
+          "retry_policy": {
+            "max_attempts": 1,
+            "backoff": "fixed",
+            "initial_delay_seconds": 0,
+            "max_delay_seconds": 0,
+            "jitter": false,
+            "retryable_categories": [],
+            "extensions": []
+          },
+          "stale_input_policy": "require_decision",
+          "on_exhausted": "wait_human",
+          "extensions": []
+        },
+        "extensions": []
+      }
+    ],
+    "created_at": "2026-07-13T08:00:00Z",
+    "extensions": []
+  },
+  "workflow_run": {
+    "id": "wfr_01JVIDEO",
+    "workflow_definition_id": "wf_shot_video_v1",
+    "workflow_definition_version": 3,
+    "project_id": "prj_drama_01",
+    "status": "waiting_human",
+    "input_snapshot": {
+      "snapshot_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "references": [
+        {
+          "entity_type": "GenerationSpecRevision",
+          "logical_id": "gs_ep01_sc03_sh05_video",
+          "revision_id": "gsr_01JVIDEO",
+          "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "extensions": []
+        }
+      ],
+      "values": [
+        { "name": "generation_spec_revision_id", "value": "gsr_01JVIDEO" }
+      ],
+      "captured_at": "2026-07-13T08:05:00Z",
+      "extensions": []
+    },
+    "business_idempotency_key": "workflow-run:v1:8fae22",
+    "summary": {
+      "total": 7,
+      "succeeded": 6,
+      "failed": 0,
+      "skipped": 0,
+      "cancelled": 0,
+      "waiting": 1,
+      "extensions": []
+    },
+    "started_at": "2026-07-13T08:05:01Z",
+    "created_at": "2026-07-13T08:05:00Z",
+    "updated_at": "2026-07-13T08:24:00Z",
+    "extensions": []
+  },
+  "node_runs": [
+    {
+      "id": "nr_generate",
+      "workflow_run_id": "wfr_01JVIDEO",
+      "node_definition_id": "generate_video",
+      "fanout_index": null,
+      "status": "succeeded",
+      "attempt_number": 1,
+      "input_snapshot": {
+        "snapshot_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "references": [
+          {
+            "entity_type": "GenerationSpecRevision",
+            "logical_id": "gs_ep01_sc03_sh05_video",
+            "revision_id": "gsr_01JVIDEO",
+            "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "extensions": []
+          }
+        ],
+        "values": [],
+        "captured_at": "2026-07-13T08:05:01Z",
+        "extensions": []
+      },
+      "observed_input_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "current_input_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "stale_input": false,
+      "stale_disposition": "not_stale",
+      "business_idempotency_key": "node-run:v1:generate:01",
+      "output": [
+        {
+          "name": "asset_version_ids",
+          "value": ["av_video_candidate_0", "av_video_candidate_1"]
+        }
+      ],
+      "started_at": "2026-07-13T08:05:02Z",
+      "finished_at": "2026-07-13T08:20:00Z",
+      "created_at": "2026-07-13T08:05:01Z",
+      "updated_at": "2026-07-13T08:20:00Z",
+      "extensions": []
+    },
+    {
+      "id": "nr_fanout_qc",
+      "workflow_run_id": "wfr_01JVIDEO",
+      "node_definition_id": "fanout_qc",
+      "fanout_index": null,
+      "status": "succeeded",
+      "attempt_number": 1,
+      "input_snapshot": {
+        "snapshot_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "references": [],
+        "values": [
+          { "name": "assets", "value": ["av_video_candidate_0", "av_video_candidate_1"] }
+        ],
+        "captured_at": "2026-07-13T08:20:01Z",
+        "extensions": []
+      },
+      "observed_input_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "current_input_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "stale_input": false,
+      "stale_disposition": "not_stale",
+      "business_idempotency_key": "node-run:v1:fanout:01",
+      "output": [
+        { "name": "child_node_run_ids", "value": ["nr_qc_0", "nr_qc_1"] }
+      ],
+      "started_at": "2026-07-13T08:20:01Z",
+      "finished_at": "2026-07-13T08:20:01Z",
+      "created_at": "2026-07-13T08:20:01Z",
+      "updated_at": "2026-07-13T08:20:01Z",
+      "extensions": []
+    },
+    {
+      "id": "nr_qc_0",
+      "workflow_run_id": "wfr_01JVIDEO",
+      "node_definition_id": "technical_qc",
+      "fanout_index": 0,
+      "parent_node_run_id": "nr_fanout_qc",
+      "status": "succeeded",
+      "attempt_number": 1,
+      "input_snapshot": {
+        "snapshot_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "references": [],
+        "values": [
+          { "name": "asset_version_id", "value": "av_video_candidate_0" }
+        ],
+        "captured_at": "2026-07-13T08:20:02Z",
+        "extensions": []
+      },
+      "observed_input_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "current_input_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "stale_input": false,
+      "stale_disposition": "not_stale",
+      "business_idempotency_key": "node-run:v1:qc:0",
+      "output": [
+        { "name": "quality_report_id", "value": "qr_candidate_0" }
+      ],
+      "started_at": "2026-07-13T08:20:02Z",
+      "finished_at": "2026-07-13T08:21:00Z",
+      "created_at": "2026-07-13T08:20:02Z",
+      "updated_at": "2026-07-13T08:21:00Z",
+      "extensions": []
+    },
+    {
+      "id": "nr_qc_1",
+      "workflow_run_id": "wfr_01JVIDEO",
+      "node_definition_id": "technical_qc",
+      "fanout_index": 1,
+      "parent_node_run_id": "nr_fanout_qc",
+      "status": "succeeded",
+      "attempt_number": 1,
+      "input_snapshot": {
+        "snapshot_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "references": [],
+        "values": [
+          { "name": "asset_version_id", "value": "av_video_candidate_1" }
+        ],
+        "captured_at": "2026-07-13T08:20:02Z",
+        "extensions": []
+      },
+      "observed_input_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "current_input_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "stale_input": false,
+      "stale_disposition": "not_stale",
+      "business_idempotency_key": "node-run:v1:qc:1",
+      "output": [
+        { "name": "quality_report_id", "value": "qr_candidate_1" }
+      ],
+      "started_at": "2026-07-13T08:20:02Z",
+      "finished_at": "2026-07-13T08:21:10Z",
+      "created_at": "2026-07-13T08:20:02Z",
+      "updated_at": "2026-07-13T08:21:10Z",
+      "extensions": []
+    },
+    {
+      "id": "nr_join",
+      "workflow_run_id": "wfr_01JVIDEO",
+      "node_definition_id": "qc_join",
+      "fanout_index": null,
+      "status": "succeeded",
+      "attempt_number": 1,
+      "input_snapshot": {
+        "snapshot_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "references": [],
+        "values": [],
+        "captured_at": "2026-07-13T08:21:11Z",
+        "extensions": []
+      },
+      "observed_input_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "current_input_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "stale_input": false,
+      "stale_disposition": "not_stale",
+      "business_idempotency_key": "node-run:v1:join:01",
+      "output": [
+        { "name": "successful_reports", "value": ["qr_candidate_0", "qr_candidate_1"] }
+      ],
+      "started_at": "2026-07-13T08:21:11Z",
+      "finished_at": "2026-07-13T08:21:11Z",
+      "created_at": "2026-07-13T08:21:11Z",
+      "updated_at": "2026-07-13T08:21:11Z",
+      "extensions": []
+    },
+    {
+      "id": "nr_condition",
+      "workflow_run_id": "wfr_01JVIDEO",
+      "node_definition_id": "needs_human_review",
+      "fanout_index": null,
+      "status": "succeeded",
+      "attempt_number": 1,
+      "input_snapshot": {
+        "snapshot_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+        "references": [],
+        "values": [
+          { "name": "successful_reports", "value": ["qr_candidate_0", "qr_candidate_1"] }
+        ],
+        "captured_at": "2026-07-13T08:21:12Z",
+        "extensions": []
+      },
+      "observed_input_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "current_input_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+      "stale_input": false,
+      "stale_disposition": "not_stale",
+      "business_idempotency_key": "node-run:v1:condition:01",
+      "output": [
+        { "name": "condition_result", "value": true },
+        { "name": "selected_target", "value": "human_select" }
+      ],
+      "started_at": "2026-07-13T08:21:12Z",
+      "finished_at": "2026-07-13T08:21:12Z",
+      "created_at": "2026-07-13T08:21:12Z",
+      "updated_at": "2026-07-13T08:21:12Z",
+      "extensions": []
+    },
+    {
+      "id": "nr_human",
+      "workflow_run_id": "wfr_01JVIDEO",
+      "node_definition_id": "human_select",
+      "fanout_index": null,
+      "status": "waiting_human",
+      "attempt_number": 1,
+      "input_snapshot": {
+        "snapshot_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "references": [],
+        "values": [
+          { "name": "candidate_asset_version_ids", "value": ["av_video_candidate_0", "av_video_candidate_1"] }
+        ],
+        "captured_at": "2026-07-13T08:21:13Z",
+        "extensions": []
+      },
+      "observed_input_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "current_input_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "stale_input": false,
+      "stale_disposition": "not_stale",
+      "business_idempotency_key": "node-run:v1:human:01",
+      "human_task_id": "human_task_candidate_select_01",
+      "output": [],
+      "started_at": "2026-07-13T08:21:13Z",
+      "created_at": "2026-07-13T08:21:13Z",
+      "updated_at": "2026-07-13T08:24:00Z",
+      "extensions": []
+    }
+  ],
+  "human_tasks": [
+    {
+      "id": "human_task_candidate_select_01",
+      "task_type": "workflow_gate",
+      "owner_type": "node_run",
+      "owner_id": "nr_human",
+      "input_snapshot_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+      "status": "waiting",
+      "required_role": "candidate_reviewer",
+      "allowed_actions": ["approve", "reject", "request_change", "cancel"],
+      "form_schema_ref": "schema://review/candidate-selection/v1",
+      "claim_timeout_seconds": 900,
+      "sla_at": "2026-07-13T10:21:13Z",
+      "hard_deadline_at": "2026-07-14T08:21:13Z",
+      "escalation_policy_revision_id": "human_escalation_policy_r3",
+      "escalation_count": 0,
+      "created_at": "2026-07-13T08:21:13Z",
+      "updated_at": "2026-07-13T08:24:00Z",
+      "extensions": []
+    },
+    {
+      "id": "human_task_budget_video_01",
+      "task_type": "budget_review",
+      "owner_type": "generation_task",
+      "owner_id": "gt_video_01",
+      "input_snapshot_hash": "sha256:4141414141414141414141414141414141414141414141414141414141414141",
+      "status": "completed",
+      "required_role": "budget_approver",
+      "allowed_actions": ["approve_budget", "reject_budget", "reduce_candidates", "cancel"],
+      "form_schema_ref": "schema://budget/generation-review/v1",
+      "claim_timeout_seconds": 900,
+      "sla_at": "2026-07-13T08:35:00Z",
+      "hard_deadline_at": "2026-07-13T12:05:00Z",
+      "escalation_policy_revision_id": "budget_escalation_policy_r2",
+      "escalation_count": 0,
+      "action": "approve_budget",
+      "acted_by": "user_finance_reviewer_01",
+      "acted_at": "2026-07-13T08:05:01Z",
+      "created_at": "2026-07-13T08:04:30Z",
+      "updated_at": "2026-07-13T08:05:01Z",
+      "extensions": []
+    }
+  ],
+  "generation_tasks": [
+    {
+      "id": "gt_video_01",
+      "node_run_id": "nr_generate",
+      "project_id": "prj_drama_01",
+      "task_type": "video_generation",
+      "status": "completed",
+      "generation_spec_revision_id": "gsr_01JVIDEO",
+      "generation_spec_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "candidate_prefilter_snapshot_id": "candidate_prefilter_video_01",
+      "candidate_prefilter_snapshot_hash": "sha256:3535353535353535353535353535353535353535353535353535353535353535",
+      "rights_gate_snapshot_id": "rgs_video_generation_allowed",
+      "rights_gate_snapshot_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "rights_gate_valid_until": "2026-07-20T00:00:00Z",
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "candidate_count": 2,
+      "candidate_slots": [
+        {
+          "candidate_index": 0,
+          "business_idempotency_key": "generation-candidate:v1:slot:0",
+          "status": "succeeded",
+          "attempt_ids": ["pat_video_0_initial"],
+          "asset_version_ids": ["av_video_candidate_0"],
+          "extensions": []
+        },
+        {
+          "candidate_index": 1,
+          "business_idempotency_key": "generation-candidate:v1:slot:1",
+          "status": "succeeded",
+          "attempt_ids": ["pat_video_1_initial"],
+          "asset_version_ids": ["av_video_candidate_1"],
+          "extensions": []
+        }
+      ],
+      "created_at": "2026-07-13T08:05:02Z",
+      "updated_at": "2026-07-13T08:20:00Z",
+      "extensions": []
+    }
+  ],
+  "provider_attempts": [
+    {
+      "id": "pat_video_0_initial",
+      "generation_task_id": "gt_video_01",
+      "candidate_index": 0,
+      "attempt_ordinal": 1,
+      "kind": "initial",
+      "status": "succeeded",
+      "resolved_execution_plan_id": "rep_video_0_initial",
+      "provider_request_snapshot_id": "prs_video_0_initial",
+      "provider_request_snapshot_hash": "sha256:acacacacacacacacacacacacacacacacacacacacacacacacacacacacacacacac",
+      "rights_gate_snapshot_id": "rgs_video_generation_allowed",
+      "rights_gate_snapshot_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "rights_gate_decision_at_submit": "allowed",
+      "rights_gate_valid_until": "2026-07-20T00:00:00Z",
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "provider_id": "seedance",
+      "model_id": "seedance-video",
+      "provider_submission_key": "provider-submit:v1:slot:0:attempt:1",
+      "provider_job_id": "provider_job_8001",
+      "result_asset_version_ids": ["av_video_candidate_0"],
+      "submitted_at": "2026-07-13T08:05:10Z",
+      "finished_at": "2026-07-13T08:18:40Z",
+      "created_at": "2026-07-13T08:05:09Z",
+      "updated_at": "2026-07-13T08:18:40Z",
+      "extensions": []
+    },
+    {
+      "id": "pat_video_1_initial",
+      "generation_task_id": "gt_video_01",
+      "candidate_index": 1,
+      "attempt_ordinal": 1,
+      "kind": "initial",
+      "status": "succeeded",
+      "resolved_execution_plan_id": "rep_video_1_initial",
+      "provider_request_snapshot_id": "prs_video_1_initial",
+      "provider_request_snapshot_hash": "sha256:adadadadadadadadadadadadadadadadadadadadadadadadadadadadadadadad",
+      "rights_gate_snapshot_id": "rgs_video_generation_allowed",
+      "rights_gate_snapshot_hash": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "rights_gate_decision_at_submit": "allowed",
+      "rights_gate_valid_until": "2026-07-20T00:00:00Z",
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "provider_id": "seedance",
+      "model_id": "seedance-video",
+      "provider_submission_key": "provider-submit:v1:slot:1:attempt:1",
+      "provider_job_id": "provider_job_8002",
+      "result_asset_version_ids": ["av_video_candidate_1"],
+      "submitted_at": "2026-07-13T08:05:11Z",
+      "finished_at": "2026-07-13T08:19:20Z",
+      "created_at": "2026-07-13T08:05:10Z",
+      "updated_at": "2026-07-13T08:19:20Z",
+      "extensions": []
+    }
+  ],
+  "asset_versions": [
+    {
+      "id": "av_video_candidate_0",
+      "asset_id": "asset_video_candidate_0",
+      "source_attempt_id": "pat_video_0_initial",
+      "candidate_index": 0,
+      "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "storage_uri": "s3://dramatizer-finalized/55/av_video_candidate_0.mp4",
+      "finalized": true,
+      "created_at": "2026-07-13T08:18:40Z",
+      "extensions": []
+    },
+    {
+      "id": "av_video_candidate_1",
+      "asset_id": "asset_video_candidate_1",
+      "source_attempt_id": "pat_video_1_initial",
+      "candidate_index": 1,
+      "content_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+      "storage_uri": "s3://dramatizer-finalized/66/av_video_candidate_1.mp4",
+      "finalized": true,
+      "created_at": "2026-07-13T08:19:20Z",
+      "extensions": []
+    }
+  ],
+  "render_input_manifests": [
+    {
+      "id": "rim_release_candidate_01",
+      "release_candidate_id": "release_candidate_01",
+      "timeline_version_id": "timeline_ep01_v8",
+      "input_closure_hash": "sha256:1717171717171717171717171717171717171717171717171717171717171717",
+      "render_profile_hash": "sha256:1818181818181818181818181818181818181818181818181818181818181818",
+      "input_asset_version_ids": ["av_video_candidate_0", "av_video_candidate_1"],
+      "rights_gate_snapshot_id": "rgs_render_ep01_allowed",
+      "rights_gate_snapshot_hash": "sha256:1919191919191919191919191919191919191919191919191919191919191919",
+      "rights_gate_valid_until": "2026-07-20T00:00:00Z",
+      "asset_availability_snapshot_hash": "sha256:2020202020202020202020202020202020202020202020202020202020202020",
+      "review_decision_ids": ["review_candidate_0", "review_candidate_1"],
+      "created_at": "2026-07-13T09:00:00Z",
+      "extensions": []
+    }
+  ],
+  "release_manifests": [
+    {
+      "id": "release_manifest_ep01_v1",
+      "release_candidate_id": "release_candidate_01",
+      "render_input_manifest_id": "rim_release_candidate_01",
+      "export_asset_version_id": "av_export_ep01_v1",
+      "export_content_hash": "sha256:2121212121212121212121212121212121212121212121212121212121212121",
+      "release_gate_id": "release_gate_ep01_v1",
+      "release_gate_hash": "sha256:3636363636363636363636363636363636363636363636363636363636363636",
+      "release_gate_input_closure_hash": "sha256:3737373737373737373737373737373737373737373737373737373737373737",
+      "release_gate_status_at_creation": "ready",
+      "release_gate_valid_until": "2026-07-14T09:30:00Z",
+      "quality_report_id": "quality_report_release_ep01_v1",
+      "rights_gate_snapshot_id": "rgs_release_ep01_allowed",
+      "rights_gate_snapshot_hash": "sha256:3838383838383838383838383838383838383838383838383838383838383838",
+      "rights_gate_valid_until": "2026-07-14T09:30:00Z",
+      "asset_availability_snapshot_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "waiver_set_hash": "sha256:2323232323232323232323232323232323232323232323232323232323232323",
+      "publication_target_hash": "sha256:2424242424242424242424242424242424242424242424242424242424242424",
+      "manifest_hash": "sha256:2525252525252525252525252525252525252525252525252525252525252525",
+      "created_at": "2026-07-13T09:30:00Z",
+      "extensions": []
+    }
+  ],
+  "publish_attempts": [
+    {
+      "id": "publish_attempt_ep01_01",
+      "release_manifest_id": "release_manifest_ep01_v1",
+      "manifest_hash": "sha256:2525252525252525252525252525252525252525252525252525252525252525",
+      "release_gate_id": "release_gate_ep01_v1",
+      "release_gate_hash": "sha256:3636363636363636363636363636363636363636363636363636363636363636",
+      "release_gate_valid_until": "2026-07-14T09:30:00Z",
+      "publication_preflight_result": "passed",
+      "publication_preflight_hash": "sha256:2626262626262626262626262626262626262626262626262626262626262626",
+      "preflight_policy_revision_id": "publication_preflight_policy_r4",
+      "asset_availability_snapshot_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "rights_gate_snapshot_hash": "sha256:3838383838383838383838383838383838383838383838383838383838383838",
+      "waiver_set_hash": "sha256:2323232323232323232323232323232323232323232323232323232323232323",
+      "review_decision_set_hash": "sha256:3939393939393939393939393939393939393939393939393939393939393939",
+      "preflight_checked_at": "2026-07-13T09:31:00Z",
+      "attempt_ordinal": 1,
+      "status": "unknown_remote_state",
+      "platform": "douyin",
+      "account_id": "douyin_account_drama_01",
+      "provider_submission_key": "publish:v1:release_gate_ep01_v1:release_manifest_ep01_v1:douyin_account_drama_01",
+      "created_at": "2026-07-13T09:31:00Z",
+      "updated_at": "2026-07-13T09:33:00Z",
+      "extensions": []
+    }
+  ],
+  "callback_inbox": [
+    {
+      "id": "inbox_delivery_9001",
+      "provider_id": "seedance",
+      "delivery_id": "delivery_9001",
+      "provider_job_id": "provider_job_8001",
+      "signature_verified": true,
+      "payload_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "status": "applied",
+      "provider_attempt_id": "pat_video_0_initial",
+      "received_at": "2026-07-13T08:18:00Z",
+      "processed_at": "2026-07-13T08:18:01Z",
+      "extensions": []
+    },
+    {
+      "id": "inbox_delivery_9001_duplicate",
+      "provider_id": "seedance",
+      "delivery_id": "delivery_9001",
+      "provider_job_id": "provider_job_8001",
+      "signature_verified": true,
+      "payload_hash": "sha256:7777777777777777777777777777777777777777777777777777777777777777",
+      "status": "duplicate",
+      "provider_attempt_id": "pat_video_0_initial",
+      "received_at": "2026-07-13T08:18:02Z",
+      "processed_at": "2026-07-13T08:18:02Z",
+      "extensions": []
+    }
+  ],
+  "callback_outbox": [
+    {
+      "id": "outbox_asset_finalized_0",
+      "aggregate_type": "AssetVersion",
+      "aggregate_id": "av_video_candidate_0",
+      "event_type": "asset_version.finalized",
+      "payload_hash": "sha256:8888888888888888888888888888888888888888888888888888888888888888",
+      "status": "delivered",
+      "delivery_attempts": 1,
+      "created_at": "2026-07-13T08:18:40Z",
+      "delivered_at": "2026-07-13T08:18:41Z",
+      "extensions": []
+    }
+  ],
+  "upload_intents": [
+    {
+      "id": "upload_video_candidate_0",
+      "owner_type": "provider_attempt",
+      "owner_id": "pat_video_0_initial",
+      "object_key": "staging/prj_drama_01/upload_video_candidate_0",
+      "expected_content_type": "video/mp4",
+      "expected_size_bytes": 18420311,
+      "expected_content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+      "status": "finalized",
+      "asset_version_id": "av_video_candidate_0",
+      "expires_at": "2026-07-14T08:18:00Z",
+      "created_at": "2026-07-13T08:18:00Z",
+      "finalized_at": "2026-07-13T08:18:40Z",
+      "extensions": []
+    }
+  ],
+  "extensions": []
+}

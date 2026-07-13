@@ -1,0 +1,534 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dramatizer.local/schemas/v0.2/provider-routing.schema.json",
+  "title": "Provider Routing, Cost, Quota, and Observability Contract Snapshot",
+  "description": "Separates static provider capabilities, dynamic health, route policy, immutable resolved plans, cost accounting, and correlation metadata.",
+  "type": "object",
+  "required": [
+    "provider_catalog",
+    "health_snapshots",
+    "route_policies",
+    "candidate_prefilter_snapshots",
+    "routing_requests",
+    "resolved_execution_plans",
+    "cost_estimates",
+    "budget_reservations",
+    "actual_costs",
+    "quota_snapshots",
+    "redaction_policy",
+    "extensions"
+  ],
+  "properties": {
+    "provider_catalog": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/providerDescriptor" }
+    },
+    "health_snapshots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/providerHealthSnapshot" }
+    },
+    "route_policies": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/routePolicy" }
+    },
+    "candidate_prefilter_snapshots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/candidatePrefilterSnapshot" }
+    },
+    "routing_requests": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/routingRequest" }
+    },
+    "resolved_execution_plans": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/resolvedExecutionPlan" }
+    },
+    "cost_estimates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/costEstimate" }
+    },
+    "budget_reservations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/budgetReservation" }
+    },
+    "actual_costs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/actualCost" }
+    },
+    "quota_snapshots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/quotaSnapshot" }
+    },
+    "redaction_policy": { "$ref": "#/$defs/redactionPolicy" },
+    "extensions": { "$ref": "#/$defs/extensions" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/Extensions"
+    },
+    "decimal": {
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
+    "money": {
+      "type": "object",
+      "required": ["amount", "currency"],
+      "properties": {
+        "amount": { "$ref": "#/$defs/decimal" },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      },
+      "additionalProperties": false
+    },
+    "usageQuantity": {
+      "type": "object",
+      "required": ["quantity", "unit"],
+      "properties": {
+        "quantity": { "$ref": "#/$defs/decimal" },
+        "unit": {
+          "type": "string",
+          "enum": ["request", "candidate", "image", "video_second", "audio_second", "character", "input_token", "output_token", "compute_second", "megabyte", "other"]
+        }
+      },
+      "additionalProperties": false
+    },
+    "constraint": {
+      "type": "object",
+      "required": ["name", "operator", "value", "extensions"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "operator": { "type": "string", "enum": ["eq", "neq", "in", "gte", "lte", "contains"] },
+        "value": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "number" },
+            { "type": "boolean" },
+            { "type": "array", "items": { "type": ["string", "number", "boolean"] } }
+          ]
+        },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "capabilityRequirement": {
+      "type": "object",
+      "required": ["capability", "necessity", "constraints", "extensions"],
+      "properties": {
+        "capability": { "type": "string", "minLength": 1 },
+        "necessity": { "type": "string", "enum": ["required", "optional"] },
+        "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" } },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "staticCapability": {
+      "type": "object",
+      "required": ["capability", "supported", "constraints", "declared_at", "extensions"],
+      "properties": {
+        "capability": { "type": "string", "minLength": 1 },
+        "supported": { "type": "boolean" },
+        "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" } },
+        "declared_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "modelDescriptor": {
+      "type": "object",
+      "required": ["model_id", "model_version", "enabled", "static_capabilities", "pricing_version", "extensions"],
+      "properties": {
+        "model_id": { "type": "string", "minLength": 1 },
+        "model_version": { "type": "string", "minLength": 1 },
+        "enabled": { "type": "boolean" },
+        "static_capabilities": { "type": "array", "items": { "$ref": "#/$defs/staticCapability" } },
+        "pricing_version": { "type": "string", "minLength": 1 },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "providerDescriptor": {
+      "type": "object",
+      "required": ["provider_id", "adapter_version", "enabled", "data_region", "models", "catalog_version", "extensions"],
+      "properties": {
+        "provider_id": { "type": "string", "minLength": 1 },
+        "adapter_version": { "type": "string", "minLength": 1 },
+        "enabled": { "type": "boolean" },
+        "data_region": { "type": "string", "minLength": 1 },
+        "models": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/modelDescriptor" } },
+        "catalog_version": { "type": "string", "minLength": 1 },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "providerHealthSnapshot": {
+      "type": "object",
+      "required": ["id", "provider_id", "model_id", "status", "success_rate_15m", "p95_latency_ms_15m", "rate_limit_remaining", "observed_at", "valid_until", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "model_id": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["healthy", "degraded", "unhealthy", "unknown"] },
+        "success_rate_15m": { "type": "number", "minimum": 0, "maximum": 1 },
+        "p95_latency_ms_15m": { "type": "integer", "minimum": 0 },
+        "rate_limit_remaining": { "type": ["integer", "null"], "minimum": 0 },
+        "circuit_state": { "type": "string", "enum": ["closed", "half_open", "open"] },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "valid_until": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "routeCandidate": {
+      "type": "object",
+      "required": ["rank", "provider_id", "model_id", "allowed_health", "fallback_on", "extensions"],
+      "properties": {
+        "rank": { "type": "integer", "minimum": 1 },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "model_id": { "type": "string", "minLength": 1 },
+        "allowed_health": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["healthy", "degraded", "unknown"] }
+        },
+        "fallback_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["quota", "rate_limit", "provider_transient", "timeout", "circuit_open", "provider_permanent"] }
+        },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "routePolicy": {
+      "type": "object",
+      "required": ["id", "version", "task_type", "capability_requirements", "candidates", "selection_strategy", "max_fallbacks", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "task_type": { "type": "string", "minLength": 1 },
+        "capability_requirements": { "type": "array", "items": { "$ref": "#/$defs/capabilityRequirement" } },
+        "candidates": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/routeCandidate" } },
+        "selection_strategy": { "type": "string", "enum": ["priority", "lowest_estimated_cost", "lowest_latency", "weighted_score"] },
+        "max_fallbacks": { "type": "integer", "minimum": 0 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "candidatePrefilterResult": {
+      "type": "object",
+      "required": ["provider_id", "model_id", "health_snapshot_id", "quota_snapshot_id", "capability_match", "eligible", "rejection_codes", "evidence_hash", "extensions"],
+      "properties": {
+        "provider_id": { "type": "string", "minLength": 1 },
+        "model_id": { "type": "string", "minLength": 1 },
+        "health_snapshot_id": { "type": "string", "minLength": 1 },
+        "quota_snapshot_id": { "type": "string", "minLength": 1 },
+        "capability_match": { "type": "boolean" },
+        "eligible": { "type": "boolean" },
+        "rejection_codes": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "evidence_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "eligible": { "const": true } }, "required": ["eligible"] },
+          "then": { "properties": { "rejection_codes": { "maxItems": 0 } } },
+          "else": { "properties": { "rejection_codes": { "minItems": 1 } } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "candidatePrefilterSnapshot": {
+      "type": "object",
+      "required": ["id", "generation_task_id", "generation_spec_revision_id", "generation_spec_hash", "task_type", "intended_use_hash", "provider_catalog_version", "route_policy_id", "route_policy_version", "health_snapshot_ids", "quota_snapshot_ids", "candidate_results", "eligible_provider_count", "evaluated_at", "snapshot_hash", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "generation_task_id": { "type": "string", "minLength": 1 },
+        "generation_spec_revision_id": { "type": "string", "minLength": 1 },
+        "generation_spec_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "task_type": { "type": "string", "minLength": 1 },
+        "intended_use_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "provider_catalog_version": { "type": "string", "minLength": 1 },
+        "route_policy_id": { "type": "string", "minLength": 1 },
+        "route_policy_version": { "type": "integer", "minimum": 1 },
+        "health_snapshot_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "quota_snapshot_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "candidate_results": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/candidatePrefilterResult" } },
+        "eligible_provider_count": { "type": "integer", "minimum": 0 },
+        "evaluated_at": { "type": "string", "format": "date-time" },
+        "snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "traceContext": {
+      "type": "object",
+      "required": ["trace_id", "span_id", "trace_flags", "span_links", "extensions"],
+      "properties": {
+        "trace_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+        "span_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+        "trace_flags": { "type": "string", "pattern": "^[0-9a-f]{2}$" },
+        "span_links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["trace_id", "span_id", "reason"],
+            "properties": {
+              "trace_id": { "type": "string", "pattern": "^[0-9a-f]{32}$" },
+              "span_id": { "type": "string", "pattern": "^[0-9a-f]{16}$" },
+              "reason": { "type": "string", "enum": ["async_dispatch", "callback", "retry", "fallback", "asset_finalize", "manual_resume"] }
+            },
+            "additionalProperties": false
+          }
+        },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "correlationChain": {
+      "type": "object",
+      "required": ["correlation_id", "project_id", "workflow_run_id", "node_run_id", "generation_task_id", "provider_attempt_id", "asset_version_ids", "trace", "extensions"],
+      "properties": {
+        "correlation_id": { "type": "string", "minLength": 1 },
+        "project_id": { "type": "string", "minLength": 1 },
+        "episode_id": { "type": ["string", "null"] },
+        "shot_plan_revision_id": { "type": ["string", "null"] },
+        "workflow_run_id": { "type": "string", "minLength": 1 },
+        "node_run_id": { "type": "string", "minLength": 1 },
+        "generation_task_id": { "type": "string", "minLength": 1 },
+        "provider_attempt_id": { "type": ["string", "null"] },
+        "asset_version_ids": { "type": "array", "items": { "type": "string" } },
+        "trace": { "$ref": "#/$defs/traceContext" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "budgetContext": {
+      "type": "object",
+      "required": ["budget_scope_type", "budget_scope_id", "budget_period_id", "currency", "hard_limit", "remaining_before_reservation", "extensions"],
+      "properties": {
+        "budget_scope_type": { "type": "string", "enum": ["project", "episode", "workflow_run", "user"] },
+        "budget_scope_id": { "type": "string", "minLength": 1 },
+        "budget_period_id": { "type": "string", "minLength": 1 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "hard_limit": { "$ref": "#/$defs/money" },
+        "remaining_before_reservation": { "$ref": "#/$defs/money" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "routingRequest": {
+      "type": "object",
+      "required": ["id", "generation_task_id", "candidate_index", "task_type", "node_capability_mode", "route_policy_id", "route_policy_version", "capability_requirements", "budget_context", "correlation", "requested_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "generation_task_id": { "type": "string", "minLength": 1 },
+        "candidate_index": { "type": "integer", "minimum": 0 },
+        "task_type": { "type": "string", "minLength": 1 },
+        "node_capability_mode": { "type": "string", "enum": ["AUTOMATED", "RULE_BASED", "MANUAL", "UNAVAILABLE"] },
+        "route_policy_id": { "type": "string", "minLength": 1 },
+        "route_policy_version": { "type": "integer", "minimum": 1 },
+        "capability_requirements": { "type": "array", "items": { "$ref": "#/$defs/capabilityRequirement" } },
+        "budget_context": { "$ref": "#/$defs/budgetContext" },
+        "correlation": { "$ref": "#/$defs/correlationChain" },
+        "requested_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "capabilityResolution": {
+      "type": "object",
+      "required": ["capability", "necessity", "satisfied", "evidence", "extensions"],
+      "properties": {
+        "capability": { "type": "string", "minLength": 1 },
+        "necessity": { "type": "string", "enum": ["required", "optional"] },
+        "satisfied": { "type": "boolean" },
+        "evidence": { "type": "string" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "budgetGateDecision": {
+      "type": "object",
+      "required": ["decision", "reason", "estimated_cost_id", "reservation_id", "decided_at", "extensions"],
+      "properties": {
+        "decision": { "type": "string", "enum": ["allow", "deny", "approval_required"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "estimated_cost_id": { "type": "string", "minLength": 1 },
+        "reservation_id": { "type": ["string", "null"] },
+        "decided_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "resolvedExecutionPlan": {
+      "type": "object",
+      "required": ["id", "routing_request_id", "resolution_kind", "provider_id", "model_id", "model_version", "adapter_version", "provider_catalog_version", "health_snapshot_id", "candidate_prefilter_snapshot_id", "candidate_prefilter_snapshot_hash", "capability_resolutions", "rights_gate_snapshot_id", "rights_gate_snapshot_hash", "rights_gate_decision_at_pin", "rights_gate_valid_until", "intended_use_hash", "budget_gate", "budget_reservation_status_at_pin", "pinned_at", "correlation", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "routing_request_id": { "type": "string", "minLength": 1 },
+        "resolution_kind": { "type": "string", "enum": ["initial", "fallback"] },
+        "previous_execution_plan_id": { "type": "string", "minLength": 1 },
+        "fallback_reason": { "type": "string", "minLength": 1 },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "model_id": { "type": "string", "minLength": 1 },
+        "model_version": { "type": "string", "minLength": 1 },
+        "adapter_version": { "type": "string", "minLength": 1 },
+        "provider_catalog_version": { "type": "string", "minLength": 1 },
+        "health_snapshot_id": { "type": "string", "minLength": 1 },
+        "candidate_prefilter_snapshot_id": { "type": "string", "minLength": 1 },
+        "candidate_prefilter_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "capability_resolutions": { "type": "array", "items": { "$ref": "#/$defs/capabilityResolution" } },
+        "rights_gate_snapshot_id": { "type": "string", "minLength": 1 },
+        "rights_gate_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rights_gate_decision_at_pin": { "const": "allowed" },
+        "rights_gate_valid_until": { "type": "string", "format": "date-time" },
+        "intended_use_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "budget_gate": {
+          "allOf": [
+            { "$ref": "#/$defs/budgetGateDecision" },
+            {
+              "properties": {
+                "decision": { "const": "allow" },
+                "reservation_id": { "type": "string", "minLength": 1 }
+              }
+            }
+          ]
+        },
+        "budget_reservation_status_at_pin": { "const": "held" },
+        "pinned_at": { "type": "string", "format": "date-time" },
+        "correlation": { "$ref": "#/$defs/correlationChain" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "resolution_kind": { "const": "fallback" } }, "required": ["resolution_kind"] },
+          "then": { "required": ["previous_execution_plan_id", "fallback_reason"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "costLineItem": {
+      "type": "object",
+      "required": ["pricing_dimension", "usage", "unit_price", "subtotal", "extensions"],
+      "properties": {
+        "pricing_dimension": { "type": "string", "minLength": 1 },
+        "usage": { "$ref": "#/$defs/usageQuantity" },
+        "unit_price": { "$ref": "#/$defs/money" },
+        "subtotal": { "$ref": "#/$defs/money" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "costEstimate": {
+      "type": "object",
+      "required": ["id", "generation_task_id", "candidate_index", "provider_id", "model_id", "pricing_version", "line_items", "total", "confidence", "estimated_at", "expires_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "generation_task_id": { "type": "string", "minLength": 1 },
+        "candidate_index": { "type": "integer", "minimum": 0 },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "model_id": { "type": "string", "minLength": 1 },
+        "pricing_version": { "type": "string", "minLength": 1 },
+        "line_items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/costLineItem" } },
+        "total": { "$ref": "#/$defs/money" },
+        "confidence": { "type": "string", "enum": ["exact", "bounded", "best_effort"] },
+        "estimated_at": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "budgetReservation": {
+      "type": "object",
+      "required": ["id", "cost_estimate_id", "budget_scope_type", "budget_scope_id", "amount", "status", "reserved_at", "expires_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "cost_estimate_id": { "type": "string", "minLength": 1 },
+        "budget_scope_type": { "type": "string", "enum": ["project", "episode", "workflow_run", "user"] },
+        "budget_scope_id": { "type": "string", "minLength": 1 },
+        "amount": { "$ref": "#/$defs/money" },
+        "status": { "type": "string", "enum": ["held", "consumed", "released", "expired"] },
+        "consumed_amount": { "$ref": "#/$defs/money" },
+        "released_amount": { "$ref": "#/$defs/money" },
+        "actual_cost_ids": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "reserved_at": { "type": "string", "format": "date-time" },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "settled_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "consumed" } }, "required": ["status"] },
+          "then": { "required": ["consumed_amount", "released_amount", "actual_cost_ids", "settled_at"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "actualCost": {
+      "type": "object",
+      "required": ["id", "provider_attempt_id", "provider_id", "model_id", "pricing_version", "line_items", "total", "source", "recorded_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "provider_attempt_id": { "type": "string", "minLength": 1 },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "model_id": { "type": "string", "minLength": 1 },
+        "pricing_version": { "type": "string", "minLength": 1 },
+        "line_items": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/costLineItem" } },
+        "total": { "$ref": "#/$defs/money" },
+        "source": { "type": "string", "enum": ["provider_response", "provider_invoice", "calculated"] },
+        "provider_invoice_ref": { "type": "string" },
+        "recorded_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "quotaSnapshot": {
+      "type": "object",
+      "required": ["id", "provider_id", "model_id", "quota_name", "limit", "used", "remaining", "unit", "window_start", "window_end", "observed_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "model_id": { "type": "string", "minLength": 1 },
+        "quota_name": { "type": "string", "minLength": 1 },
+        "limit": { "$ref": "#/$defs/decimal" },
+        "used": { "$ref": "#/$defs/decimal" },
+        "remaining": { "$ref": "#/$defs/decimal" },
+        "unit": { "type": "string", "minLength": 1 },
+        "window_start": { "type": "string", "format": "date-time" },
+        "window_end": { "type": "string", "format": "date-time" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "redactionRule": {
+      "type": "object",
+      "required": ["field_pattern", "action", "replacement", "extensions"],
+      "properties": {
+        "field_pattern": { "type": "string", "minLength": 1 },
+        "action": { "type": "string", "enum": ["drop", "mask", "hash", "tokenize"] },
+        "replacement": { "type": "string" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "redactionPolicy": {
+      "type": "object",
+      "required": ["id", "version", "default_action", "prohibited_log_fields", "rules", "allow_prompt_body_in_logs", "allow_signed_url_query_in_logs", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "default_action": { "type": "string", "enum": ["allow", "drop"] },
+        "prohibited_log_fields": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "rules": { "type": "array", "items": { "$ref": "#/$defs/redactionRule" } },
+        "allow_prompt_body_in_logs": { "type": "boolean" },
+        "allow_signed_url_query_in_logs": { "type": "boolean" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,0 +1,459 @@
+{
+  "report_id": "qr_candidate_shot_001_take_02_v1",
+  "scope": "candidate_asset",
+  "subject": {
+    "entity_type": "asset_version",
+    "id": "asset_video_shot_001_take_02_v1",
+    "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "report_revision": {
+    "revision_id": "quality_report_revision_001",
+    "content_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "supersedes_id": null,
+  "created_at": "2026-07-13T08:12:30Z",
+  "policy_revision": {
+    "revision_id": "quality_policy_candidate_v3",
+    "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  },
+  "expectation_revision": {
+    "revision_id": "generation_spec_shot_001_r7",
+    "content_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "layers": {
+    "technical": {
+      "layer": "technical",
+      "execution_status": "executed",
+      "evaluator": {
+        "evaluator_id": "media_qc",
+        "kind": "deterministic",
+        "version": "1.4.0",
+        "config_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "model_revision": null,
+        "prompt_template_revision": null
+      },
+      "policy_revision": {
+        "revision_id": "quality_policy_candidate_v3",
+        "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "expectation_revision": {
+        "revision_id": "media_expectation_shot_001_r2",
+        "content_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      },
+      "started_at": "2026-07-13T08:10:00Z",
+      "completed_at": "2026-07-13T08:10:04Z",
+      "reason": null,
+      "triggered_by": [],
+      "evidence": [
+        {
+          "evidence_id": "evidence_tech_decode_001",
+          "check_id": "check_tech_decode_001",
+          "code": "media.decode.success",
+          "outcome": "pass",
+          "metric": true,
+          "unit": null,
+          "threshold": {
+            "operator": "equals",
+            "value": true,
+            "lower": null,
+            "upper": null,
+            "tolerance": null,
+            "hard_fail": true
+          },
+          "confidence": 1.0,
+          "locations": [
+            {
+              "asset": {
+                "entity_type": "asset_version",
+                "id": "asset_video_shot_001_take_02_v1",
+                "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "time_range": {
+                "start_ms": 0,
+                "end_ms": 6400
+              },
+              "frame_range": {
+                "start_frame": 0,
+                "end_frame": 159,
+                "frame_rate": 25.0
+              },
+              "artifact_uri": "s3://quality-evidence/shot-001/take-02/ffprobe.json",
+              "note": "The full asset decoded without an ffmpeg error."
+            }
+          ],
+          "evaluator": {
+            "evaluator_id": "media_qc",
+            "kind": "deterministic",
+            "version": "1.4.0",
+            "config_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "model_revision": null,
+            "prompt_template_revision": null
+          },
+          "policy_revision": {
+            "revision_id": "quality_policy_candidate_v3",
+            "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "expectation_revision": {
+            "revision_id": "media_expectation_shot_001_r2",
+            "content_hash": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+          },
+          "message": "Video and audio streams are decodable.",
+          "extensions": []
+        }
+      ],
+      "extensions": []
+    },
+    "native_semantic": {
+      "layer": "native_semantic",
+      "execution_status": "executed",
+      "evaluator": {
+        "evaluator_id": "gemini_video_understanding",
+        "kind": "native_multimodal_model",
+        "version": "adapter-2.1.0",
+        "config_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+        "model_revision": "gemini-video-model-2026-06",
+        "prompt_template_revision": "video_semantic_qc_prompt_r5"
+      },
+      "policy_revision": {
+        "revision_id": "quality_policy_candidate_v3",
+        "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "expectation_revision": {
+        "revision_id": "generation_spec_shot_001_r7",
+        "content_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "started_at": "2026-07-13T08:10:05Z",
+      "completed_at": "2026-07-13T08:11:14Z",
+      "reason": null,
+      "triggered_by": [],
+      "evidence": [
+        {
+          "evidence_id": "evidence_semantic_hand_001",
+          "check_id": "check_semantic_prop_hand_001",
+          "code": "continuity.prop_hand",
+          "outcome": "warning",
+          "metric": "left",
+          "unit": "hand",
+          "threshold": {
+            "operator": "equals",
+            "value": "right",
+            "lower": null,
+            "upper": null,
+            "tolerance": null,
+            "hard_fail": false
+          },
+          "confidence": 0.82,
+          "locations": [
+            {
+              "asset": {
+                "entity_type": "asset_version",
+                "id": "asset_video_shot_001_take_02_v1",
+                "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "time_range": {
+                "start_ms": 2120,
+                "end_ms": 3860
+              },
+              "frame_range": null,
+              "artifact_uri": "s3://quality-evidence/shot-001/take-02/gemini-response.json",
+              "note": "Semantic locator; frame-level confirmation requested."
+            }
+          ],
+          "evaluator": {
+            "evaluator_id": "gemini_video_understanding",
+            "kind": "native_multimodal_model",
+            "version": "adapter-2.1.0",
+            "config_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "model_revision": "gemini-video-model-2026-06",
+            "prompt_template_revision": "video_semantic_qc_prompt_r5"
+          },
+          "policy_revision": {
+            "revision_id": "quality_policy_candidate_v3",
+            "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "expectation_revision": {
+            "revision_id": "generation_spec_shot_001_r7",
+            "content_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "message": "The cup appears to be lifted with the left hand, while the planned state specifies the right hand.",
+          "extensions": [
+            {
+              "extension_type": "semantic_event_hint",
+              "schema_id": "https://dramatizer.local/extensions/semantic-event-hint.schema.json",
+              "schema_version": "1.0.0",
+              "data": { "event_type": "pick_up_cup" }
+            }
+          ]
+        }
+      ],
+      "extensions": []
+    },
+    "frame_signal_cv": {
+      "layer": "frame_signal_cv",
+      "execution_status": "executed",
+      "evaluator": {
+        "evaluator_id": "targeted_hand_prop_tracker",
+        "kind": "computer_vision",
+        "version": "0.9.2",
+        "config_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+        "model_revision": "hand-prop-tracker-2026-05",
+        "prompt_template_revision": null
+      },
+      "policy_revision": {
+        "revision_id": "quality_policy_candidate_v3",
+        "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "expectation_revision": {
+        "revision_id": "generation_spec_shot_001_r7",
+        "content_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+      },
+      "started_at": "2026-07-13T08:11:15Z",
+      "completed_at": "2026-07-13T08:11:21Z",
+      "reason": null,
+      "triggered_by": [
+        {
+          "trigger_type": "semantic_evidence",
+          "source_id": "evidence_semantic_hand_001",
+          "rule_revision": {
+            "revision_id": "targeted_cv_trigger_policy_r4",
+            "content_hash": "sha256:3333333333333333333333333333333333333333333333333333333333333333"
+          },
+          "target_range": {
+            "start_ms": 2000,
+            "end_ms": 4000
+          }
+        }
+      ],
+      "evidence": [
+        {
+          "evidence_id": "evidence_cv_hand_001",
+          "check_id": "check_cv_prop_hand_001",
+          "code": "continuity.prop_hand.frame_confirmed",
+          "outcome": "warning",
+          "metric": "left",
+          "unit": "hand",
+          "threshold": {
+            "operator": "equals",
+            "value": "right",
+            "lower": null,
+            "upper": null,
+            "tolerance": null,
+            "hard_fail": false
+          },
+          "confidence": 0.94,
+          "locations": [
+            {
+              "asset": {
+                "entity_type": "asset_version",
+                "id": "asset_video_shot_001_take_02_v1",
+                "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "time_range": {
+                "start_ms": 2160,
+                "end_ms": 3800
+              },
+              "frame_range": {
+                "start_frame": 54,
+                "end_frame": 95,
+                "frame_rate": 25.0
+              },
+              "artifact_uri": "s3://quality-evidence/shot-001/take-02/hand-track.json",
+              "note": "The cup overlaps and tracks with the left-hand keypoints."
+            }
+          ],
+          "evaluator": {
+            "evaluator_id": "targeted_hand_prop_tracker",
+            "kind": "computer_vision",
+            "version": "0.9.2",
+            "config_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+            "model_revision": "hand-prop-tracker-2026-05",
+            "prompt_template_revision": null
+          },
+          "policy_revision": {
+            "revision_id": "quality_policy_candidate_v3",
+            "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "expectation_revision": {
+            "revision_id": "generation_spec_shot_001_r7",
+            "content_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+          },
+          "message": "Targeted CV confirms the left-hand deviation over frames 54–95.",
+          "extensions": []
+        }
+      ],
+      "extensions": []
+    },
+    "narrative": {
+      "layer": "narrative",
+      "execution_status": "executed",
+      "evaluator": {
+        "evaluator_id": "narrative_intent_reviewer",
+        "kind": "narrative_model",
+        "version": "1.2.0",
+        "config_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+        "model_revision": "narrative-model-2026-06",
+        "prompt_template_revision": "narrative_qc_prompt_r6"
+      },
+      "policy_revision": {
+        "revision_id": "quality_policy_candidate_v3",
+        "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "expectation_revision": {
+        "revision_id": "director_plan_shot_001_r4",
+        "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+      },
+      "started_at": "2026-07-13T08:11:22Z",
+      "completed_at": "2026-07-13T08:12:05Z",
+      "reason": null,
+      "triggered_by": [],
+      "evidence": [
+        {
+          "evidence_id": "evidence_narrative_intent_001",
+          "check_id": "check_narrative_intent_001",
+          "code": "narrative.intent.conveyed",
+          "outcome": "pass",
+          "metric": "semantic_match",
+          "unit": null,
+          "threshold": {
+            "operator": "equals",
+            "value": "semantic_match",
+            "lower": null,
+            "upper": null,
+            "tolerance": null,
+            "hard_fail": false
+          },
+          "confidence": 0.88,
+          "locations": [
+            {
+              "asset": {
+                "entity_type": "asset_version",
+                "id": "asset_video_shot_001_take_02_v1",
+                "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+              },
+              "time_range": {
+                "start_ms": 0,
+                "end_ms": 6400
+              },
+              "frame_range": null,
+              "artifact_uri": "s3://quality-evidence/shot-001/take-02/narrative-response.json",
+              "note": "Narrative judgment uses the full candidate and adjacent-shot context."
+            }
+          ],
+          "evaluator": {
+            "evaluator_id": "narrative_intent_reviewer",
+            "kind": "narrative_model",
+            "version": "1.2.0",
+            "config_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+            "model_revision": "narrative-model-2026-06",
+            "prompt_template_revision": "narrative_qc_prompt_r6"
+          },
+          "policy_revision": {
+            "revision_id": "quality_policy_candidate_v3",
+            "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          },
+          "expectation_revision": {
+            "revision_id": "director_plan_shot_001_r4",
+            "content_hash": "sha256:5555555555555555555555555555555555555555555555555555555555555555"
+          },
+          "message": "The restrained anger and slow push-in convey the planned pressure despite the hand-continuity warning.",
+          "extensions": []
+        }
+      ],
+      "extensions": []
+    }
+  },
+  "automated_decision": {
+    "decision_id": "automated_quality_decision_001",
+    "report_id": "qr_candidate_shot_001_take_02_v1",
+    "outcome": "pass_with_warning",
+    "policy_revision": {
+      "revision_id": "quality_policy_candidate_v3",
+      "content_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "evaluated_at": "2026-07-13T08:12:10Z",
+    "hard_failure": false,
+    "consumed_evidence_ids": [
+      "evidence_tech_decode_001",
+      "evidence_semantic_hand_001",
+      "evidence_cv_hand_001",
+      "evidence_narrative_intent_001"
+    ],
+    "short_circuited_layers": [],
+    "reasons": [
+      {
+        "code": "quality.continuity.warning",
+        "message": "The prop hand differs from the planned end state and requires an explicit continuity disposition.",
+        "evidence_ids": [
+          "evidence_semantic_hand_001",
+          "evidence_cv_hand_001"
+        ]
+      }
+    ],
+    "decision_hash": "sha256:6666666666666666666666666666666666666666666666666666666666666666",
+    "extensions": []
+  },
+  "review_decisions": [
+    {
+      "review_decision_id": "review_decision_shot_001_take_02_v1",
+      "supersedes_id": null,
+      "subject": {
+        "entity_type": "asset_version",
+        "id": "asset_video_shot_001_take_02_v1",
+        "content_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "decision": "approve",
+      "reviewer": {
+        "actor_type": "user",
+        "actor_id": "user_director_01",
+        "display_name": "Director Chen",
+        "role_snapshot": [
+          "candidate_reviewer",
+          "continuity_approver"
+        ]
+      },
+      "decided_at": "2026-07-13T08:12:20Z",
+      "reason": "Performance and camera intent are strong; the hand deviation is bounded and explicitly accepted for the next edge.",
+      "automated_decision_id": "automated_quality_decision_001",
+      "waiver": null,
+      "audit_event_id": "audit_review_001",
+      "extensions": []
+    }
+  ],
+  "continuity_outcomes": [
+    {
+      "approval_id": "cappr_9f8e7d6c-5b4a-4321-8fed-cba987654321",
+      "shot_plan_revision_ref": {
+        "entity_type": "shot_plan",
+        "logical_id": "shot_001",
+        "revision_id": "rev_12345678-1234-4234-8234-123456789abc"
+      },
+      "decision": "accept_observation",
+      "input_snapshot_ids": [
+        "csnap_11111111-2222-4333-8444-555555555555"
+      ],
+      "input_observation_ids": [
+        "cobs_66666666-7777-4888-8999-aaaaaaaaaaaa"
+      ],
+      "approved_snapshot_id": "csnap_bbbbbbbb-cccc-4ddd-8eee-ffffffffffff",
+      "decided_at": "2026-07-13T08:12:24Z",
+      "decided_by": {
+        "actor_type": "user",
+        "actor_id": "user_director_01"
+      },
+      "authority": "human",
+      "reason": "Accept the left-hand cup position only as the starting condition for shot 002; canonical character facts remain unchanged.",
+      "extensions": []
+    }
+  ],
+  "release_gate": null,
+  "extensions": [
+    {
+      "extension_type": "example_note",
+      "schema_id": "https://dramatizer.local/extensions/example-note.schema.json",
+      "schema_version": "1.0.0",
+      "data": {
+        "note": "An automated pass-with-warning still requires a separate human approval."
+      }
+    }
+  ]
+}

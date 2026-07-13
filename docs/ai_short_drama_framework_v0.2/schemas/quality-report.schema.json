@@ -1,0 +1,1511 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dramatizer.local/schemas/v0.2/quality-report.schema.json",
+  "title": "QualityReport",
+  "description": "Immutable quality evidence aggregate. Automated decisions, human review, continuity disposition, and release gating remain distinct records.",
+  "type": "object",
+  "required": [
+    "report_id",
+    "scope",
+    "subject",
+    "report_revision",
+    "supersedes_id",
+    "created_at",
+    "policy_revision",
+    "expectation_revision",
+    "layers",
+    "automated_decision",
+    "review_decisions",
+    "continuity_outcomes",
+    "release_gate",
+    "extensions"
+  ],
+  "properties": {
+    "report_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "string",
+      "enum": [
+        "candidate_asset",
+        "episode_release"
+      ]
+    },
+    "subject": {
+      "$ref": "#/$defs/ImmutableSubjectRef"
+    },
+    "report_revision": {
+      "$ref": "#/$defs/RevisionPointer"
+    },
+    "supersedes_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "created_at": {
+      "$ref": "#/$defs/UtcTimestamp"
+    },
+    "policy_revision": {
+      "$ref": "#/$defs/RevisionPointer"
+    },
+    "expectation_revision": {
+      "$ref": "#/$defs/RevisionPointer"
+    },
+    "layers": {
+      "type": "object",
+      "required": [
+        "technical",
+        "native_semantic",
+        "frame_signal_cv",
+        "narrative"
+      ],
+      "properties": {
+        "technical": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/LayerResult"
+            },
+            {
+              "properties": {
+                "layer": {
+                  "const": "technical"
+                }
+              }
+            }
+          ]
+        },
+        "native_semantic": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/LayerResult"
+            },
+            {
+              "properties": {
+                "layer": {
+                  "const": "native_semantic"
+                }
+              }
+            }
+          ]
+        },
+        "frame_signal_cv": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/LayerResult"
+            },
+            {
+              "properties": {
+                "layer": {
+                  "const": "frame_signal_cv"
+                }
+              }
+            }
+          ]
+        },
+        "narrative": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/LayerResult"
+            },
+            {
+              "properties": {
+                "layer": {
+                  "const": "narrative"
+                }
+              }
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "automated_decision": {
+      "$ref": "#/$defs/AutomatedQualityDecision"
+    },
+    "review_decisions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ReviewDecision"
+      }
+    },
+    "continuity_outcomes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "continuity.schema.json#/$defs/ContinuityApproval"
+          },
+          {
+            "$ref": "#/$defs/CanonicalChangeProposal"
+          }
+        ]
+      }
+    },
+    "release_gate": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/ReleaseGate"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "extensions": {
+      "$ref": "#/$defs/Extensions"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "scope": {
+            "const": "candidate_asset"
+          }
+        },
+        "required": [
+          "scope"
+        ]
+      },
+      "then": {
+        "properties": {
+          "subject": {
+            "properties": {
+              "entity_type": {
+                "const": "asset_version"
+              }
+            }
+          },
+          "release_gate": {
+            "type": "null"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "subject": {
+            "properties": {
+              "entity_type": {
+                "const": "timeline_version"
+              }
+            }
+          },
+          "release_gate": {
+            "$ref": "#/$defs/ReleaseGate"
+          }
+        }
+      }
+    }
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "UtcTimestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ContentHash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "Extensions": {
+      "$ref": "common.schema.json#/$defs/Extensions"
+    },
+    "RevisionPointer": {
+      "type": "object",
+      "required": [
+        "revision_id",
+        "content_hash"
+      ],
+      "properties": {
+        "revision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_hash": {
+          "$ref": "#/$defs/ContentHash"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ImmutableSubjectRef": {
+      "type": "object",
+      "required": [
+        "entity_type",
+        "id",
+        "content_hash"
+      ],
+      "properties": {
+        "entity_type": {
+          "type": "string",
+          "enum": [
+            "asset_version",
+            "timeline_version",
+            "export_asset_version",
+            "rights_gate_snapshot",
+            "state_snapshot_revision",
+            "canonical_revision",
+            "shot_plan_revision"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "content_hash": {
+          "$ref": "#/$defs/ContentHash"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ActorRef": {
+      "type": "object",
+      "required": [
+        "actor_type",
+        "actor_id",
+        "display_name",
+        "role_snapshot"
+      ],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": [
+            "user",
+            "service",
+            "policy"
+          ]
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "role_snapshot": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "EvaluatorRef": {
+      "type": "object",
+      "required": [
+        "evaluator_id",
+        "kind",
+        "version",
+        "config_hash",
+        "model_revision",
+        "prompt_template_revision"
+      ],
+      "properties": {
+        "evaluator_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "deterministic",
+            "native_multimodal_model",
+            "computer_vision",
+            "narrative_model",
+            "human"
+          ]
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "config_hash": {
+          "$ref": "#/$defs/ContentHash"
+        },
+        "model_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "prompt_template_revision": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "TimeRangeMs": {
+      "type": "object",
+      "required": [
+        "start_ms",
+        "end_ms"
+      ],
+      "properties": {
+        "start_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "FrameRange": {
+      "type": "object",
+      "required": [
+        "start_frame",
+        "end_frame",
+        "frame_rate"
+      ],
+      "properties": {
+        "start_frame": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "end_frame": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "frame_rate": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "EvidenceLocator": {
+      "type": "object",
+      "required": [
+        "asset",
+        "time_range",
+        "frame_range",
+        "artifact_uri",
+        "note"
+      ],
+      "properties": {
+        "asset": {
+          "$ref": "#/$defs/ImmutableSubjectRef"
+        },
+        "time_range": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TimeRangeMs"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "frame_range": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/FrameRange"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "artifact_uri": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uri"
+        },
+        "note": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "Threshold": {
+      "type": "object",
+      "required": [
+        "operator",
+        "value",
+        "lower",
+        "upper",
+        "tolerance",
+        "hard_fail"
+      ],
+      "properties": {
+        "operator": {
+          "type": "string",
+          "enum": [
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+            "between",
+            "equals",
+            "not_equals",
+            "contains"
+          ]
+        },
+        "value": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        "lower": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "upper": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "tolerance": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "hard_fail": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "QualityEvidence": {
+      "type": "object",
+      "required": [
+        "evidence_id",
+        "check_id",
+        "code",
+        "outcome",
+        "metric",
+        "unit",
+        "threshold",
+        "confidence",
+        "locations",
+        "evaluator",
+        "policy_revision",
+        "expectation_revision",
+        "message",
+        "extensions"
+      ],
+      "properties": {
+        "evidence_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "check_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]+$"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "warning",
+            "fail",
+            "inconclusive"
+          ]
+        },
+        "metric": {
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "null"
+          ]
+        },
+        "unit": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threshold": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Threshold"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "locations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/EvidenceLocator"
+          }
+        },
+        "evaluator": {
+          "$ref": "#/$defs/EvaluatorRef"
+        },
+        "policy_revision": {
+          "$ref": "#/$defs/RevisionPointer"
+        },
+        "expectation_revision": {
+          "$ref": "#/$defs/RevisionPointer"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "additionalProperties": false
+    },
+    "TriggerRef": {
+      "type": "object",
+      "required": [
+        "trigger_type",
+        "source_id",
+        "rule_revision",
+        "target_range"
+      ],
+      "properties": {
+        "trigger_type": {
+          "type": "string",
+          "enum": [
+            "expectation_risk",
+            "semantic_evidence",
+            "basic_cv_evidence",
+            "human_request"
+          ]
+        },
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rule_revision": {
+          "$ref": "#/$defs/RevisionPointer"
+        },
+        "target_range": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/TimeRangeMs"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "LayerResult": {
+      "type": "object",
+      "required": [
+        "layer",
+        "execution_status",
+        "evaluator",
+        "policy_revision",
+        "expectation_revision",
+        "started_at",
+        "completed_at",
+        "reason",
+        "triggered_by",
+        "evidence",
+        "extensions"
+      ],
+      "properties": {
+        "layer": {
+          "type": "string",
+          "enum": [
+            "technical",
+            "native_semantic",
+            "frame_signal_cv",
+            "narrative"
+          ]
+        },
+        "execution_status": {
+          "type": "string",
+          "enum": [
+            "executed",
+            "skipped",
+            "not_applicable",
+            "unavailable",
+            "failed",
+            "inconclusive"
+          ]
+        },
+        "evaluator": {
+          "$ref": "#/$defs/EvaluatorRef"
+        },
+        "policy_revision": {
+          "$ref": "#/$defs/RevisionPointer"
+        },
+        "expectation_revision": {
+          "$ref": "#/$defs/RevisionPointer"
+        },
+        "started_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "completed_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "triggered_by": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/TriggerRef"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/QualityEvidence"
+          }
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "execution_status": {
+                "const": "executed"
+              }
+            },
+            "required": [
+              "execution_status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "evidence": {
+                "minItems": 1
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "reason": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "DecisionReason": {
+      "type": "object",
+      "required": [
+        "code",
+        "message",
+        "evidence_ids"
+      ],
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_.-]+$"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "AutomatedQualityDecision": {
+      "type": "object",
+      "required": [
+        "decision_id",
+        "report_id",
+        "outcome",
+        "policy_revision",
+        "evaluated_at",
+        "hard_failure",
+        "consumed_evidence_ids",
+        "short_circuited_layers",
+        "reasons",
+        "decision_hash",
+        "extensions"
+      ],
+      "properties": {
+        "decision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "report_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "pass_with_warning",
+            "manual_review",
+            "repair",
+            "regenerate",
+            "blocked"
+          ]
+        },
+        "policy_revision": {
+          "$ref": "#/$defs/RevisionPointer"
+        },
+        "evaluated_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "hard_failure": {
+          "type": "boolean"
+        },
+        "consumed_evidence_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "short_circuited_layers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "native_semantic",
+              "frame_signal_cv",
+              "narrative"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "reasons": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/DecisionReason"
+          }
+        },
+        "decision_hash": {
+          "$ref": "#/$defs/ContentHash"
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "hard_failure": {
+                "const": true
+              }
+            },
+            "required": [
+              "hard_failure"
+            ]
+          },
+          "then": {
+            "properties": {
+              "outcome": {
+                "enum": [
+                  "regenerate",
+                  "blocked"
+                ]
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "WaiverScope": {
+      "description": "Closed, discriminated waiver target. Each scope requires only its own non-empty locator fields.",
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "scope_type",
+            "subject"
+          ],
+          "properties": {
+            "scope_type": {
+              "const": "asset"
+            },
+            "subject": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ImmutableSubjectRef"
+                },
+                {
+                  "properties": {
+                    "entity_type": {
+                      "const": "asset_version"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "scope_type",
+            "subject"
+          ],
+          "properties": {
+            "scope_type": {
+              "const": "shot"
+            },
+            "subject": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ImmutableSubjectRef"
+                },
+                {
+                  "properties": {
+                    "entity_type": {
+                      "const": "shot_plan_revision"
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "scope_type",
+            "subject",
+            "check_codes"
+          ],
+          "properties": {
+            "scope_type": {
+              "const": "check"
+            },
+            "subject": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ImmutableSubjectRef"
+                },
+                {
+                  "properties": {
+                    "entity_type": {
+                      "enum": [
+                        "asset_version",
+                        "timeline_version"
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "check_codes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_.-]+$"
+              },
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "scope_type",
+            "subject",
+            "release_gate_id"
+          ],
+          "properties": {
+            "scope_type": {
+              "const": "release"
+            },
+            "subject": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/ImmutableSubjectRef"
+                },
+                {
+                  "properties": {
+                    "entity_type": {
+                      "const": "timeline_version"
+                    }
+                  }
+                }
+              ]
+            },
+            "release_gate_id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "Waiver": {
+      "type": "object",
+      "required": [
+        "permission",
+        "permission_policy_revision",
+        "permission_evaluated_at",
+        "reason",
+        "scope",
+        "expires_at",
+        "audit_event_id",
+        "conditions"
+      ],
+      "properties": {
+        "permission": {
+          "type": "string",
+          "minLength": 1
+        },
+        "permission_policy_revision": {
+          "$ref": "#/$defs/RevisionPointer"
+        },
+        "permission_evaluated_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope": {
+          "$ref": "#/$defs/WaiverScope"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "audit_event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "conditions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReviewDecision": {
+      "type": "object",
+      "required": [
+        "review_decision_id",
+        "supersedes_id",
+        "subject",
+        "decision",
+        "reviewer",
+        "decided_at",
+        "reason",
+        "automated_decision_id",
+        "waiver",
+        "audit_event_id",
+        "extensions"
+      ],
+      "properties": {
+        "review_decision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "supersedes_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "subject": {
+          "$ref": "#/$defs/ImmutableSubjectRef"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "approve",
+            "reject",
+            "request_repair",
+            "request_regeneration",
+            "waive"
+          ]
+        },
+        "reviewer": {
+          "$ref": "#/$defs/ActorRef"
+        },
+        "decided_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "automated_decision_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "waiver": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/Waiver"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "audit_event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "decision": {
+                "const": "waive"
+              }
+            },
+            "required": [
+              "decision"
+            ]
+          },
+          "then": {
+            "properties": {
+              "waiver": {
+                "$ref": "#/$defs/Waiver"
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "waiver": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "JsonPatchOperation": {
+      "type": "object",
+      "required": [
+        "op",
+        "path"
+      ],
+      "properties": {
+        "op": {
+          "type": "string",
+          "enum": [
+            "add",
+            "remove",
+            "replace",
+            "test"
+          ]
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "value": true
+      },
+      "additionalProperties": false
+    },
+    "CanonicalChangeProposal": {
+      "type": "object",
+      "required": [
+        "kind",
+        "proposal_id",
+        "canonical_base",
+        "patch",
+        "reason",
+        "impacted_subjects",
+        "status",
+        "proposed_by",
+        "proposed_at",
+        "approved_by",
+        "applied_revision",
+        "audit_event_id",
+        "extensions"
+      ],
+      "properties": {
+        "kind": {
+          "const": "canonical_change_proposal"
+        },
+        "proposal_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "canonical_base": {
+          "$ref": "#/$defs/ImmutableSubjectRef"
+        },
+        "patch": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/JsonPatchOperation"
+          }
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "impacted_subjects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ImmutableSubjectRef"
+          }
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "proposed",
+            "approved",
+            "rejected",
+            "applied"
+          ]
+        },
+        "proposed_by": {
+          "$ref": "#/$defs/ActorRef"
+        },
+        "proposed_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "approved_by": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/ActorRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "applied_revision": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/RevisionPointer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "audit_event_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "additionalProperties": false
+    },
+    "ReleaseGate": {
+      "type": "object",
+      "required": [
+        "release_gate_id",
+        "timeline",
+        "export_asset",
+        "gate_input_closure_hash",
+        "quality_report_id",
+        "rights_gate_snapshot",
+        "asset_availability_snapshot",
+        "review_decision_ids",
+        "policy_revision",
+        "status",
+        "evaluated_at",
+        "valid_until",
+        "blocking_reasons",
+        "waiver_review_decision_id",
+        "extensions"
+      ],
+      "properties": {
+        "release_gate_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "timeline": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/ImmutableSubjectRef"
+            },
+            {
+              "properties": {
+                "entity_type": {
+                  "const": "timeline_version"
+                }
+              }
+            }
+          ]
+        },
+        "export_asset": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/ImmutableSubjectRef"
+            },
+            {
+              "properties": {
+                "entity_type": {
+                  "const": "export_asset_version"
+                }
+              }
+            }
+          ]
+        },
+        "gate_input_closure_hash": {
+          "$ref": "#/$defs/ContentHash"
+        },
+        "quality_report_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "rights_gate_snapshot": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/ImmutableSubjectRef"
+            },
+            {
+              "properties": {
+                "entity_type": {
+                  "const": "rights_gate_snapshot"
+                }
+              }
+            }
+          ]
+        },
+        "asset_availability_snapshot": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "asset_version_id",
+              "availability_revision_id",
+              "availability_hash",
+              "status",
+              "evaluated_at"
+            ],
+            "properties": {
+              "asset_version_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "availability_revision_id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "availability_hash": {
+                "$ref": "#/$defs/ContentHash"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "available",
+                  "quarantined",
+                  "restricted",
+                  "deleted",
+                  "orphan"
+                ]
+              },
+              "evaluated_at": {
+                "$ref": "#/$defs/UtcTimestamp"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "review_decision_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "uniqueItems": true
+        },
+        "policy_revision": {
+          "$ref": "#/$defs/RevisionPointer"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "pending",
+            "ready",
+            "blocked",
+            "waived",
+            "invalidated"
+          ]
+        },
+        "evaluated_at": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "valid_until": {
+          "$ref": "#/$defs/UtcTimestamp"
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DecisionReason"
+          }
+        },
+        "waiver_review_decision_id": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "extensions": {
+          "$ref": "#/$defs/Extensions"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "enum": [
+                  "ready",
+                  "waived"
+                ]
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "asset_availability_snapshot": {
+                "minItems": 1,
+                "items": {
+                  "properties": {
+                    "status": {
+                      "const": "available"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "waived"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "waiver_review_decision_id": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ready"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "blocking_reasons": {
+                "maxItems": 0
+              },
+              "waiver_review_decision_id": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "blocked"
+              }
+            },
+            "required": [
+              "status"
+            ]
+          },
+          "then": {
+            "properties": {
+              "blocking_reasons": {
+                "minItems": 1
+              },
+              "waiver_review_decision_id": {
+                "type": "null"
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

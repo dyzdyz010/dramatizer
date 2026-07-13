@@ -1,0 +1,127 @@
+{
+  "schema_version": "0.2",
+  "entity_type": "shot_plan_revision",
+  "shot_plan_id": "ep01_sc03_sh05",
+  "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a",
+  "revision_number": 1,
+  "parent_revision_ids": [],
+  "created_at": "2026-07-13T08:30:00Z",
+  "created_by": {
+    "actor_type": "user",
+    "actor_id": "director_lin"
+  },
+  "change_summary": "建立合同印章特写的首版导演方案。",
+  "composition": {
+    "episode_revision_ref": {
+      "entity_type": "episode_revision",
+      "logical_id": "ep01",
+      "revision_id": "rev_81186f36-1597-4a3d-aaba-0e968665a01e"
+    },
+    "scene_revision_ref": {
+      "entity_type": "scene_revision",
+      "logical_id": "ep01_sc03",
+      "revision_id": "rev_490e08ab-6c93-45d7-b5c9-5ae0a44edb99"
+    },
+    "beat_revision_ref": {
+      "entity_type": "beat_revision",
+      "logical_id": "ep01_sc03_b02",
+      "revision_id": "rev_f1fe08c2-4c4c-4f8d-9709-b8f3c26814ba"
+    },
+    "story_event_ids": [
+      "event_contract_seal_recognized",
+      "event_emotion_calm_to_suspicious",
+      "event_dialogue_ask_seal_origin"
+    ],
+    "coverage": "complete",
+    "proposed_shot_index": 4
+  },
+  "presentation_goal": "林晓识别合同印章异常；缓慢推进形成压迫感，但不新增她已确认幕后人的事实。",
+  "shot_class": "DIALOGUE_CLOSEUP",
+  "duration": {
+    "preferred_ms": 4500,
+    "minimum_ms": 3800,
+    "maximum_ms": 5200,
+    "timing_rationale": "保留识别印章与情绪变化的可读停顿。"
+  },
+  "camera": {
+    "shot_size": "medium_close_up",
+    "angle": "eye_level",
+    "movement": "slow_push_in",
+    "visual_focus": "林晓的眼睛与合同印章",
+    "composition_notes": "印章位于画面下三分之一，眼神变化保持清晰。",
+    "lens_intent": "轻微压缩空间，避免夸张广角。"
+  },
+  "staging": {
+    "location_version_ref": {
+      "entity_type": "location_version",
+      "logical_id": "meeting_room",
+      "revision_id": "rev_6b297f91-493a-45b4-a600-64b0da529e88"
+    },
+    "participants": [
+      {
+        "character_version_ref": {
+          "entity_type": "character_version",
+          "logical_id": "char_lin",
+          "revision_id": "rev_e3aaf7e6-0c62-4dab-a181-4089b75647b2"
+        },
+        "wardrobe_version_ref": {
+          "entity_type": "wardrobe_version",
+          "logical_id": "wardrobe_office_gray",
+          "revision_id": "rev_004bb34e-0f3a-42c9-a866-5d1d59c57bbd"
+        },
+        "pose": "seated",
+        "gaze_target": "prop_contract.seal",
+        "emotion": "restrained_anger",
+        "performance_intensity": 0.45
+      }
+    ],
+    "prop_version_refs": [
+      {
+        "entity_type": "prop_version",
+        "logical_id": "prop_contract",
+        "revision_id": "rev_1f32d25a-14eb-4bf1-91f1-09f7d3402321"
+      }
+    ],
+    "blocking_notes": "林晓保持坐姿，右手持合同，视线从正文移动到印章。"
+  },
+  "audio_strategy": {
+    "mode": "authoritative_voice_first",
+    "dialogue_authority": "narrative_revision",
+    "dialogue_event_ids": ["event_dialogue_ask_seal_origin"],
+    "lip_sync_policy": "qc_only",
+    "sound_notes": "对白前保留约 400ms 纸张摩擦声。"
+  },
+  "continuity_binding": {
+    "planned_start_snapshot_id": "csnap_8b3f0d72-c8f5-49d3-8c2b-83161a50b08c",
+    "planned_transition_id": "ctrans_c4909c59-f1ac-4d9f-9c46-45d334320c1f",
+    "planned_end_snapshot_id": "csnap_dddbb428-a99d-452e-b12a-fe7d3fb77054"
+  },
+  "constraints": {
+    "must_show": [
+      "合同全程可见且持有关系明确",
+      "印章细节至少清晰可辨 800ms"
+    ],
+    "must_not_show": [
+      "不得出现新的第三人",
+      "不得把怀疑表现为已经确认幕后人"
+    ],
+    "reference_asset_refs": [
+      {
+        "entity_type": "asset_version",
+        "logical_id": "char_lin_master",
+        "revision_id": "rev_70dfe893-f860-4bc6-ac46-762608825770"
+      }
+    ]
+  },
+  "extensions": [
+    {
+      "extension_type": "project_color_intent",
+      "schema_id": "https://dramatizer.local/extensions/project-color-intent/1.0",
+      "schema_version": "1.0",
+      "data": {
+        "palette": "cold_office",
+        "contrast": "medium"
+      }
+    }
+  ]
+}

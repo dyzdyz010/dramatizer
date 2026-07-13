@@ -1,0 +1,75 @@
+flowchart LR
+    WD["WorkflowDefinition@version"] -->|materialize fixed graph| WR["WorkflowRun"]
+    WR -->|owns 1..*| NR["NodeRun"]
+    NR -->|generation handler| GT["GenerationTask<br/>fixed GenerationSpecRevision"]
+    GT -->|candidate index 0..N-1| CS["Candidate Slot<br/>stable business key"]
+
+    CS --> PF["Candidate prefilter<br/>Catalog + Health + Quota"]
+    PF --> PFS["CandidatePrefilterSnapshot<br/>immutable ID + hash"]
+    PF -->|no candidate| PFB["prefilter_blocked"]
+    PFS --> RG{"Rights Gate"}
+    RG -->|allowed + unexpired| CR["Capability Resolution"]
+    RG -->|manual_review| RH["Rights HumanTask<br/>NodeRun waiting_human"]
+    RG -->|blocked| RB["rights_blocked"]
+    CR --> BG["Budget Estimate + Reservation"]
+    CR -->|no eligible route| NRB["routing_blocked"]
+    BG -->|allow and held| RP["ResolvedExecutionPlan<br/>immutable pin"]
+    BG -->|deny| MB["budget_blocked"]
+    BG -->|approval_required| BH["Budget HumanTask<br/>budget_review"]
+
+    RP --> PRS["ProviderRequestSnapshot<br/>encrypted execution record"]
+    PRS --> PA["ProviderAttempt<br/>initial / retry / fallback"]
+    PA -->|async submit| P[(Provider)]
+
+    P -->|at-least-once callback| CI["Callback Inbox<br/>verify + dedupe"]
+    CI -->|monotonic transition| PA
+    CI -->|output announced| US["UploadIntent<br/>staged object"]
+    US -->|hash + MIME + media probe| FIN["Finalize Worker"]
+    FIN -->|valid| AV["AssetVersion<br/>immutable + finalized"]
+    FIN -->|invalid| UA["Intent aborted"]
+    UA --> Q["Separate quarantine / orphan cleanup"]
+    AV --> CS
+
+    PA -. retry: same plan, new Attempt .-> PA2["ProviderAttempt retry"]
+    PA -. fallback reason .-> RP2["New fallback plan"]
+    RP2 --> PA3["ProviderAttempt fallback"]
+    GT -. regenerate decision .-> GT2["New GenerationTask<br/>new candidate keys"]
+
+    NR -->|condition| COND{"CEL condition"}
+    COND -->|selected| FO["Fan-out<br/>bounded children"]
+    COND -->|not selected| SKIP["skipped with reason"]
+    FO --> CHILD["Child NodeRuns"]
+    CHILD --> JOIN{"Join policy"}
+    JOIN --> HG["Human Gate"]
+    HG -->|authorized action| NR2["Downstream NodeRun"]
+
+    TL["Frozen TimelineVersion"] --> PRE["PreRenderEvaluationInput"]
+    PRE --> ELIG{"Rights + availability<br/>Review + waiver current?"}
+    ELIG -->|passed transaction| RIM["RenderInputManifest"]
+    ELIG -->|failed| PRB["pre-render blocked"]
+    RIM --> RENDER["RenderAttempt"]
+    RENDER --> EXP["Finalized export AssetVersion"]
+    EXP --> RLG["Final QC + release RightsGate + ReleaseGate"]
+    RLG --> RM["ReleaseManifest"]
+    RM --> PPF{"Immediate publication preflight<br/>current hashes + validity"}
+    PPF -->|passed| PUB["PublishAttempt"]
+    PPF -->|failed before side effect| PBF["PublishAttempt failed<br/>new ReleaseCandidate"]
+    PUB --> PLATFORM[(Publication Platform)]
+    PUB -->|ACK lost / uncertain| PUR["unknown_remote_state<br/>reconcile; no blind resend"]
+    PUR -->|found publication| PLATFORM
+    PUR -->|confirmed absent| PUB2["New PublishAttempt"]
+
+    WR --> OB["Transactional Outbox"]
+    NR --> OB
+    PA --> OB
+    AV --> OB
+    OB -->|at-least-once delivery| D[(Consumers)]
+
+    classDef authority fill:#e8f1ff,stroke:#2d5f9a,color:#102030;
+    classDef execution fill:#fff3d6,stroke:#9a6b16,color:#302000;
+    classDef asset fill:#e8f7ed,stroke:#2f7d47,color:#102a18;
+    classDef failure fill:#fdeaea,stroke:#a33b3b,color:#401010;
+    class WD,WR,NR,GT,CS authority;
+    class PF,PFS,RG,CR,BG,RP,PA,PRS,P,CI,US,COND,FO,CHILD,JOIN,HG,RH,BH,OB,D,PRE,ELIG,RIM,RENDER,RLG,RM,PPF,PUB,PLATFORM,PUR,PUB2 execution;
+    class AV,FIN,EXP asset;
+    class MB,Q,SKIP,PFB,RB,NRB,UA,PRB,PBF failure;

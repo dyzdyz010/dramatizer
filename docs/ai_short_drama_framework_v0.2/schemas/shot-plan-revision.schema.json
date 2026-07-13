@@ -1,0 +1,236 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dramatizer.local/schemas/v0.2/shot-plan-revision.schema.json",
+  "title": "ShotPlanRevision",
+  "description": "Immutable authoritative director plan for one logical ShotPlan. Narrative facts are referenced, never copied as new facts.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "entity_type",
+    "shot_plan_id",
+    "revision_id",
+    "revision_number",
+    "parent_revision_ids",
+    "created_at",
+    "created_by",
+    "change_summary",
+    "composition",
+    "presentation_goal",
+    "shot_class",
+    "duration",
+    "camera",
+    "staging",
+    "audio_strategy",
+    "continuity_binding",
+    "constraints",
+    "extensions"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.2" },
+    "entity_type": { "const": "shot_plan_revision" },
+    "shot_plan_id": { "$ref": "common.schema.json#/$defs/LogicalId" },
+    "revision_id": { "$ref": "common.schema.json#/$defs/RevisionId" },
+    "revision_number": { "type": "integer", "minimum": 1 },
+    "parent_revision_ids": {
+      "type": "array",
+      "items": { "$ref": "common.schema.json#/$defs/RevisionId" },
+      "uniqueItems": true,
+      "maxItems": 2
+    },
+    "created_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+    "created_by": { "$ref": "common.schema.json#/$defs/ActorRef" },
+    "change_summary": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "composition": {
+      "type": "object",
+      "required": [
+        "episode_revision_ref",
+        "scene_revision_ref",
+        "beat_revision_ref",
+        "story_event_ids",
+        "proposed_shot_index"
+      ],
+      "properties": {
+        "episode_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "scene_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "beat_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "story_event_ids": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/LogicalId" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "coverage": {
+          "type": "string",
+          "enum": ["complete", "partial", "establishing", "reaction", "transition"]
+        },
+        "proposed_shot_index": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "presentation_goal": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "shot_class": {
+      "type": "string",
+      "enum": [
+        "DIALOGUE_CLOSEUP",
+        "DIALOGUE_TWO_SHOT",
+        "REACTION",
+        "ACTION_COMPLEX",
+        "CAMERA_MOVE",
+        "ENVIRONMENT_ESTABLISHING",
+        "OBJECT_INSERT",
+        "TRANSITION",
+        "CROWD"
+      ]
+    },
+    "duration": {
+      "type": "object",
+      "required": ["preferred_ms", "minimum_ms", "maximum_ms"],
+      "properties": {
+        "preferred_ms": { "type": "integer", "minimum": 250, "maximum": 60000 },
+        "minimum_ms": { "type": "integer", "minimum": 250, "maximum": 60000 },
+        "maximum_ms": { "type": "integer", "minimum": 250, "maximum": 60000 },
+        "timing_rationale": { "type": "string", "maxLength": 1000 }
+      },
+      "additionalProperties": false
+    },
+    "camera": {
+      "type": "object",
+      "required": ["shot_size", "angle", "movement", "visual_focus", "composition_notes"],
+      "properties": {
+        "shot_size": { "$ref": "common.schema.json#/$defs/LogicalId" },
+        "angle": { "$ref": "common.schema.json#/$defs/LogicalId" },
+        "movement": { "$ref": "common.schema.json#/$defs/LogicalId" },
+        "visual_focus": { "type": "string", "minLength": 1, "maxLength": 1000 },
+        "composition_notes": { "type": "string", "maxLength": 2000 },
+        "lens_intent": { "type": "string", "maxLength": 500 }
+      },
+      "additionalProperties": false
+    },
+    "staging": {
+      "type": "object",
+      "required": ["location_version_ref", "participants", "blocking_notes"],
+      "properties": {
+        "location_version_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "participants": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["character_version_ref", "pose", "gaze_target", "emotion", "performance_intensity"],
+            "properties": {
+              "character_version_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+              "wardrobe_version_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+              "pose": { "$ref": "common.schema.json#/$defs/LogicalId" },
+              "gaze_target": { "type": "string", "minLength": 1, "maxLength": 256 },
+              "emotion": { "$ref": "common.schema.json#/$defs/LogicalId" },
+              "performance_intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+            },
+            "additionalProperties": false
+          },
+          "uniqueItems": true
+        },
+        "prop_version_refs": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+          "uniqueItems": true
+        },
+        "blocking_notes": { "type": "string", "maxLength": 3000 }
+      },
+      "additionalProperties": false
+    },
+    "audio_strategy": {
+      "type": "object",
+      "required": ["mode", "dialogue_authority", "lip_sync_policy"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "description": "Provider-neutral production strategy; Provider/model selection belongs to routing and request adaptation.",
+          "enum": [
+            "no_dialogue",
+            "joint_audio_video",
+            "authoritative_voice_first",
+            "separate_dialogue_and_scene_audio",
+            "voice_over"
+          ]
+        },
+        "dialogue_authority": {
+          "type": "string",
+          "description": "Dialogue authority is either absent or an exact Narrative Authority revision. Generated candidates are observations, never dialogue authority.",
+          "enum": ["none", "narrative_revision"]
+        },
+        "dialogue_event_ids": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/LogicalId" },
+          "uniqueItems": true
+        },
+        "lip_sync_policy": {
+          "type": "string",
+          "enum": ["skip", "qc_only", "optional_repair", "required"]
+        },
+        "sound_notes": { "type": "string", "maxLength": 2000 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "mode": { "const": "no_dialogue" } },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": {
+              "dialogue_authority": { "const": "none" },
+              "dialogue_event_ids": {
+                "type": "array",
+                "items": { "$ref": "common.schema.json#/$defs/LogicalId" },
+                "maxItems": 0
+              },
+              "lip_sync_policy": { "const": "skip" }
+            }
+          },
+          "else": {
+            "properties": {
+              "dialogue_authority": { "const": "narrative_revision" },
+              "dialogue_event_ids": {
+                "type": "array",
+                "items": { "$ref": "common.schema.json#/$defs/LogicalId" },
+                "minItems": 1
+              }
+            },
+            "required": ["dialogue_event_ids"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "continuity_binding": {
+      "type": "object",
+      "required": ["planned_start_snapshot_id", "planned_transition_id", "planned_end_snapshot_id"],
+      "properties": {
+        "planned_start_snapshot_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "planned_transition_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "planned_end_snapshot_id": { "$ref": "common.schema.json#/$defs/ImmutableId" }
+      },
+      "additionalProperties": false
+    },
+    "constraints": {
+      "type": "object",
+      "required": ["must_show", "must_not_show", "reference_asset_refs"],
+      "properties": {
+        "must_show": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        },
+        "must_not_show": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "maxLength": 1000 }
+        },
+        "reference_asset_refs": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+  },
+  "additionalProperties": false
+}

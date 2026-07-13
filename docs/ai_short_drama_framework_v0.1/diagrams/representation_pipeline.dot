@@ -1,0 +1,12 @@
+digraph G {
+  graph [rankdir=LR, bgcolor="white", fontname="Noto Sans CJK SC"];
+  node [shape=box, style="rounded,filled", fillcolor="#F8FAFC", color="#64748B", fontname="Noto Sans CJK SC", fontsize=11];
+  edge [color="#64748B"];
+  a [label="语义事实层\n人物 / 动作 / 状态 / 因果"];
+  b [label="导演表达层\n景别 / 机位 / 表演 / 声音策略"];
+  c [label="Generation IR\n模型无关中间表示"];
+  d [label="Provider Adapter"];
+  e [label="提示词 / 参数 / 参考资产"];
+  f [label="生成资产"];
+  a -> b -> c -> d -> e -> f;
+}

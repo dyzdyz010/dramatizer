@@ -1,0 +1,10 @@
+flowchart TB
+  UI[Studio UI] --> C[Phoenix Control Plane]
+  C --> LLM[Opus / Sonnet / GPT / Gemini]
+  C --> VIS[Seedream / Seedance]
+  C --> AUD[GPT-SoVITS / Suno / Derived SFX]
+  C --> MEDIA[FFmpeg Worker]
+  C --> CV[CV Worker]
+  C --> DB[(PostgreSQL)]
+  C --> OBJ[(MinIO / S3)]
+  ACP[ACP Agent Gateway] --> MCP[MCP Project Tools] --> C

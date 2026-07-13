@@ -1,0 +1,62 @@
+flowchart TB
+  subgraph NAV["Composition / navigation tree — not a transaction boundary"]
+    P[Project] --> SB[SeriesBible]
+    SB --> SE[Season]
+    SE --> EP[Episode]
+    EP --> SC[Scene]
+    SC --> BT[Beat position]
+    BT -. proposes .-> SPOS[ShotPlan position]
+  end
+
+  subgraph NAR["Narrative Authority — Beat aggregate"]
+    BROOT[Beat logical entity]
+    BROOT -->|1..n immutable revisions| BR[BeatRevision]
+    BR -->|1..n embedded values| EV[StoryEvent]
+  end
+
+  subgraph DIR["Directing Authority — ShotPlan aggregate"]
+    SPROOT[ShotPlan logical entity]
+    SPROOT -->|1..n immutable revisions| SPR[ShotPlanRevision]
+    SPR --> PSTART[planned_start Snapshot]
+    SPR --> TRANS[StateTransition]
+    TRANS --> PEND[planned_end Snapshot]
+  end
+
+  subgraph EXEC["Derived Execution aggregates"]
+    GSROOT[GenerationSpec logical entity]
+    GSROOT -->|1..n| GSR[GenerationSpecRevision]
+    GSR -->|0..n| REQ[ProviderRequestSnapshot]
+    REQ -->|1..n execution tries| ATT[GenerationAttempt]
+    ATT -->|0..n outputs| AV[Candidate AssetVersion]
+  end
+
+  subgraph OBSDEC["Observation and Decision"]
+    AV -->|0..n analyses| OBS[DetectedObservation]
+    PEND --> APP[ContinuityApproval]
+    OBS --> APP
+    APP -->|accepted decision creates| AEND[approved_end Snapshot]
+    AEND --> EDGE[ContinuityEdge]
+    EDGE -->|orders next plan| PSTART2[next planned_start Snapshot]
+  end
+
+  subgraph TL["Timeline aggregate"]
+    TROOT[Timeline logical entity] -->|1..n| TV[TimelineVersion]
+    TV -->|0..n value objects| CLIP[TimelineClip]
+  end
+
+  SC -. exact revision ref .-> BR
+  SPR -->|exact BeatRevision + StoryEvent IDs| BR
+  SPR -->|compiled from exact revision| GSR
+  AV -->|exact source ref after decision| CLIP
+
+  classDef narrative fill:#e8f5e9,stroke:#2e7d32,color:#102a13;
+  classDef directing fill:#e3f2fd,stroke:#1565c0,color:#0b2440;
+  classDef derived fill:#fff3e0,stroke:#ef6c00,color:#3a2100;
+  classDef observation fill:#f3e5f5,stroke:#7b1fa2,color:#2b1033;
+  classDef decision fill:#fce4ec,stroke:#ad1457,color:#3b0a20;
+
+  class BROOT,BR,EV narrative;
+  class SPROOT,SPR,PSTART,TRANS,PEND,PSTART2 directing;
+  class GSROOT,GSR,REQ,ATT,AV,TROOT,TV,CLIP derived;
+  class OBS observation;
+  class APP,AEND,EDGE decision;

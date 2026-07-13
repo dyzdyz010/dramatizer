@@ -1,0 +1,40 @@
+flowchart TD
+    A[Finalized candidate AssetVersion] --> L1[L1 Technical QC]
+    L1 --> HF{Hard technical failure?}
+    HF -- Yes --> SC[Short-circuit dependent semantic/CV layers]
+    SC --> AD[AutomatedQualityDecision: blocked/regenerate]
+    HF -- No --> FORK{Parallel fan-out}
+    FORK --> L2[L2 Gemini native A/V semantic QC]
+    FORK --> L3B[L3 Basic CV/signal QC]
+    L2 --> TR{Risk or anomaly trigger?}
+    L3B --> TR
+    TR -- Yes --> L3T[L3 Targeted CV on cited ranges]
+    TR -- No --> JOIN[Evidence join]
+    L3T --> JOIN
+    L2 --> JOIN
+    L3B --> JOIN
+    JOIN --> L4[L4 Narrative/directorial QC]
+    L4 --> AD2[AutomatedQualityDecision]
+    AD2 --> MR{Authorized human review}
+    AD --> MR
+    MR -->|approve| RD[ReviewDecision: approved candidate]
+    MR -->|reject / repair / regenerate| LOOP[New repair task or GenerationTask; orchestrator creates Attempts]
+    MR -->|accept observation or manual override| CA[ContinuityApproval + approved snapshot]
+    MR -->|change canonical facts| CP[CanonicalChangeProposal]
+    CP --> PA{Separate proposal approval and apply}
+    PA -->|approved| NR[New canonical revision + stale propagation]
+    PA -->|rejected| END1[Canonical remains unchanged]
+    RD --> TV[Frozen TimelineVersion]
+    CA --> TV
+    TV --> EX[Deterministic episode export]
+    EX --> RQC[Independent episode Release QC]
+    RQC --> RG{ReleaseGate: approvals + rights + manifest hash + policy}
+    RG -->|ready or valid release waiver| REL[Immutable Release]
+    RG -->|blocked| FIX[Repair timeline/assets/rights then create new QC]
+
+    classDef evidence fill:#e8f4ff,stroke:#337ab7,color:#111;
+    classDef decision fill:#fff2cc,stroke:#a67c00,color:#111;
+    classDef human fill:#e8f5e9,stroke:#2e7d32,color:#111;
+    class L1,L2,L3B,L3T,L4,RQC evidence;
+    class HF,TR,AD,AD2,RG decision;
+    class MR,RD,CA,CP,PA human;

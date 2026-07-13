@@ -1,0 +1,259 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dramatizer.local/schemas/v0.2/common.schema.json",
+  "title": "Dramatizer v0.2 Common Contract",
+  "description": "Shared value objects. The root is intentionally not an instance payload; consumers reference entries in $defs.",
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "$defs": {
+    "LogicalId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:[_-][a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 128
+    },
+    "RevisionId": {
+      "type": "string",
+      "pattern": "^rev_[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "ImmutableId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]{1,15}_[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "EntityType": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$",
+      "minLength": 3,
+      "maxLength": 64
+    },
+    "UtcTimestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "ContentHash": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "ActorRef": {
+      "type": "object",
+      "required": ["actor_type", "actor_id"],
+      "properties": {
+        "actor_type": {
+          "type": "string",
+          "enum": ["user", "service", "policy"]
+        },
+        "actor_id": { "$ref": "#/$defs/LogicalId" }
+      },
+      "additionalProperties": false
+    },
+    "VersionedRef": {
+      "type": "object",
+      "required": ["entity_type", "logical_id", "revision_id"],
+      "properties": {
+        "entity_type": { "$ref": "#/$defs/EntityType" },
+        "logical_id": { "$ref": "#/$defs/LogicalId" },
+        "revision_id": { "$ref": "#/$defs/RevisionId" }
+      },
+      "additionalProperties": false
+    },
+    "ImmutableRef": {
+      "type": "object",
+      "required": ["entity_type", "id"],
+      "properties": {
+        "entity_type": { "$ref": "#/$defs/EntityType" },
+        "id": { "$ref": "#/$defs/ImmutableId" }
+      },
+      "additionalProperties": false
+    },
+    "ExactRef": {
+      "oneOf": [
+        { "$ref": "#/$defs/VersionedRef" },
+        { "$ref": "#/$defs/ImmutableRef" }
+      ]
+    },
+    "HeadPointer": {
+      "type": "object",
+      "required": [
+        "entity_type",
+        "logical_id",
+        "stream_id",
+        "head_revision_id",
+        "lock_version",
+        "updated_at",
+        "updated_by"
+      ],
+      "properties": {
+        "entity_type": { "$ref": "#/$defs/EntityType" },
+        "logical_id": { "$ref": "#/$defs/LogicalId" },
+        "stream_id": { "$ref": "#/$defs/LogicalId" },
+        "head_revision_id": { "$ref": "#/$defs/RevisionId" },
+        "lock_version": { "type": "integer", "minimum": 1 },
+        "updated_at": { "$ref": "#/$defs/UtcTimestamp" },
+        "updated_by": { "$ref": "#/$defs/ActorRef" }
+      },
+      "additionalProperties": false
+    },
+    "TypedExtension": {
+      "type": "object",
+      "required": ["extension_type", "schema_id", "schema_version", "data"],
+      "properties": {
+        "extension_type": { "$ref": "#/$defs/EntityType" },
+        "schema_id": { "type": "string", "format": "uri" },
+        "schema_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+(?:\\.[0-9]+)?$" },
+        "data": { "type": "object" }
+      },
+      "additionalProperties": false
+    },
+    "Extensions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/TypedExtension" },
+      "maxItems": 32
+    },
+    "TimeRangeMs": {
+      "type": "object",
+      "required": ["start_ms", "end_ms"],
+      "properties": {
+        "start_ms": { "type": "integer", "minimum": 0 },
+        "end_ms": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "Confidence": {
+      "type": "object",
+      "required": ["score", "calibration_id"],
+      "properties": {
+        "score": { "type": "number", "minimum": 0, "maximum": 1 },
+        "calibration_id": { "$ref": "#/$defs/LogicalId" }
+      },
+      "additionalProperties": false
+    },
+    "StateValue": {
+      "type": "object",
+      "required": ["presence"],
+      "properties": {
+        "presence": {
+          "type": "string",
+          "enum": ["known", "unknown", "not_present"]
+        },
+        "value": {},
+        "reason_code": { "$ref": "#/$defs/LogicalId" },
+        "note": { "type": "string", "maxLength": 1000 }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "presence": { "const": "known" } },
+            "required": ["presence"]
+          },
+          "then": {
+            "properties": { "value": {} },
+            "required": ["value"]
+          },
+          "else": { "properties": { "value": false } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "DependencyTracking": {
+      "type": "object",
+      "required": ["mode", "impact_paths"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["pinned", "follow_head", "approval_gated"]
+        },
+        "stream_id": { "$ref": "#/$defs/LogicalId" },
+        "impact_paths": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^/", "maxLength": 512 },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "mode": { "enum": ["follow_head", "approval_gated"] } },
+            "required": ["mode"]
+          },
+          "then": {
+            "properties": { "stream_id": { "$ref": "#/$defs/LogicalId" } },
+            "required": ["stream_id"]
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "DependencyEdge": {
+      "type": "object",
+      "required": ["edge_id", "dependent", "dependency", "dependency_kind", "tracking", "created_at"],
+      "properties": {
+        "edge_id": { "$ref": "#/$defs/ImmutableId" },
+        "dependent": { "$ref": "#/$defs/ExactRef" },
+        "dependency": { "$ref": "#/$defs/ExactRef" },
+        "dependency_kind": {
+          "type": "string",
+          "enum": [
+            "semantic_input",
+            "director_input",
+            "reference_asset",
+            "compiler_config",
+            "policy_input",
+            "evidence_input",
+            "timeline_source"
+          ]
+        },
+        "tracking": { "$ref": "#/$defs/DependencyTracking" },
+        "required_for_reproducibility": { "type": "boolean", "default": true },
+        "created_at": { "$ref": "#/$defs/UtcTimestamp" }
+      },
+      "additionalProperties": false
+    },
+    "StaleReason": {
+      "type": "object",
+      "required": ["dependency_edge_id", "reason", "detected_at"],
+      "properties": {
+        "dependency_edge_id": { "$ref": "#/$defs/ImmutableId" },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "dependency_revision_replaced",
+            "dependency_revoked",
+            "compiler_changed",
+            "policy_changed",
+            "dependency_missing",
+            "integrity_check_failed"
+          ]
+        },
+        "bound_dependency_id": { "type": "string", "minLength": 1 },
+        "current_dependency_id": { "type": "string", "minLength": 1 },
+        "detected_at": { "$ref": "#/$defs/UtcTimestamp" }
+      },
+      "additionalProperties": false
+    },
+    "Staleness": {
+      "type": "object",
+      "required": ["status", "evaluated_at", "reasons"],
+      "properties": {
+        "status": { "type": "string", "enum": ["fresh", "stale", "unknown"] },
+        "evaluated_at": { "$ref": "#/$defs/UtcTimestamp" },
+        "reasons": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/StaleReason" }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "stale" } },
+            "required": ["status"]
+          },
+          "then": { "properties": { "reasons": { "minItems": 1 } } },
+          "else": { "properties": { "reasons": { "maxItems": 0 } } }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

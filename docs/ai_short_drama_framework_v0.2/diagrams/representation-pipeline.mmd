@@ -1,0 +1,73 @@
+flowchart LR
+  subgraph NA["Narrative Authority"]
+    BR[BeatRevision]
+    EV[StoryEvent]
+    BR --> EV
+  end
+
+  subgraph DA["Directing Authority"]
+    SPR[ShotPlanRevision]
+    PS[planned ContinuitySnapshots]
+    ST[StateTransition]
+    SPR --> PS
+    SPR --> ST
+  end
+
+  subgraph DE["Derived Execution"]
+    COMP[Deterministic Compiler<br/>no model calls]
+    GSR[GenerationSpecRevision<br/>model-independent]
+    ROUTE[Router]
+    ADAPT[Provider Adapter]
+    PRS[ProviderRequestSnapshot<br/>provider-specific]
+    ATT[GenerationAttempt]
+    AV[Candidate AssetVersion]
+
+    COMP --> GSR --> ROUTE --> ADAPT --> PRS --> ATT --> AV
+  end
+
+  subgraph OB["Observation"]
+    TQC[Technical QC]
+    VU[Video Understanding]
+    CV[Frame-level CV]
+    DO[DetectedObservation]
+    AV --> TQC --> DO
+    AV --> VU --> DO
+    AV --> CV --> DO
+  end
+
+  subgraph DC["Decision"]
+    AQD[Automated Quality Decision]
+    RD[Review / Selection Decision]
+    CA[ContinuityApproval]
+    AS[approved_end Snapshot]
+    TL[TimelineClip in new TimelineVersion]
+    DO --> AQD --> RD
+    DO --> CA --> AS
+    RD --> TL
+    AV -->|exact AssetVersion ref| TL
+  end
+
+  BR -->|exact revision| SPR
+  EV -->|selected IDs| SPR
+  SPR -->|exact input| COMP
+  PS --> COMP
+  ST --> COMP
+
+  HEAD[(Head pointers)] -. used only to select compile inputs .-> COMP
+  HEAD -. never persisted inside Spec or Request .-> ROUTE
+  DEP[(DependencyEdge + stale index)]
+  GSR --> DEP
+  PRS --> DEP
+  TL --> DEP
+
+  classDef narrative fill:#e8f5e9,stroke:#2e7d32,color:#102a13;
+  classDef directing fill:#e3f2fd,stroke:#1565c0,color:#0b2440;
+  classDef derived fill:#fff3e0,stroke:#ef6c00,color:#3a2100;
+  classDef observation fill:#f3e5f5,stroke:#7b1fa2,color:#2b1033;
+  classDef decision fill:#fce4ec,stroke:#ad1457,color:#3b0a20;
+
+  class BR,EV narrative;
+  class SPR,PS,ST directing;
+  class COMP,GSR,ROUTE,ADAPT,PRS,ATT,AV,TQC,VU,CV,TL,DEP,HEAD derived;
+  class DO observation;
+  class AQD,RD,CA,AS decision;

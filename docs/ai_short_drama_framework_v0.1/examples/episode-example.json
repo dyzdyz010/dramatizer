@@ -1,0 +1,55 @@
+{
+  "episode": {
+    "id": "ep01",
+    "title": "印章",
+    "duration_target_ms": 90000,
+    "opening_hook": "签字前一秒，林晓发现合同上的印章不属于本公司。",
+    "ending_hook": "监控画面显示，调换合同的人是她最信任的同事。",
+    "scenes": [
+      {
+        "id": "ep01_sc03",
+        "location_version_id": "meeting_room_v2",
+        "time": "afternoon",
+        "beats": [
+          {
+            "id": "ep01_sc03_b02",
+            "purpose": "林晓发现异常",
+            "shots": [
+              "ep01_sc03_sh05"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "shot": {
+    "id": "ep01_sc03_sh05",
+    "scene_id": "ep01_sc03",
+    "revision": 1,
+    "shot_class": "DIALOGUE_CLOSEUP",
+    "narrative_purpose": "林晓识别合同异常并形成压迫感",
+    "duration_ms": 4500,
+    "characters": [
+      {
+        "character_version_id": "char_lin_v5",
+        "wardrobe_version_id": "wardrobe_office_gray_v2",
+        "pose": "seated",
+        "gaze_target": "prop_contract_01.seal",
+        "emotion": "restrained_anger"
+      }
+    ],
+    "camera": {
+      "shot_size": "medium_close_up",
+      "angle": "eye_level",
+      "movement": "slow_push_in"
+    },
+    "audio_strategy": "gpt_sovits_first",
+    "planned_state": {
+      "right_hand": "holding_contract",
+      "door": "closed"
+    },
+    "detected_state": null,
+    "approved_state": null,
+    "approval_status": "ready_for_generation"
+  }
+}

@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QualityReport",
+  "type": "object",
+  "required": [
+    "asset_id",
+    "technical",
+    "semantic",
+    "cv",
+    "decision"
+  ],
+  "properties": {
+    "asset_id": {
+      "type": "string"
+    },
+    "technical": {
+      "type": "object"
+    },
+    "semantic": {
+      "type": "object"
+    },
+    "cv": {
+      "type": "object"
+    },
+    "narrative": {
+      "type": [
+        "object",
+        "null"
+      ]
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "pass",
+        "pass_with_warning",
+        "manual_review",
+        "repair",
+        "regenerate",
+        "blocked"
+      ]
+    },
+    "reasons": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "recommended_scope": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

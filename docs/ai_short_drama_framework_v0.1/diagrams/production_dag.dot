@@ -1,0 +1,21 @@
+digraph G {
+  graph [rankdir=LR, bgcolor="white", fontname="Noto Sans CJK SC", nodesep=0.28, ranksep=0.45];
+  node [shape=box, style="rounded,filled", fillcolor="#F8FAFC", color="#64748B", fontname="Noto Sans CJK SC", fontsize=10];
+  edge [color="#64748B", arrowsize=0.65];
+  n1 [label="剧集圣经\nOpus"];
+  n2 [label="单集剧本\nSonnet"];
+  n3 [label="结构化编译\nTerra + Luna"];
+  n4 [label="分镜 / 关键帧\nSeedream"];
+  n5 [label="Animatic 审核"];
+  n6 [label="视频 + 音频\nSeedance / GPT-SoVITS"];
+  n7 [label="技术 QC\nFFmpeg"];
+  n8 [label="视频理解\nGemini"];
+  n9 [label="逐帧测量\nCV"];
+  n10 [label="叙事仲裁\nOpus / Sol"];
+  n11 [label="人工审核"];
+  n12 [label="时间线 / 混音 / 字幕"];
+  n13 [label="成片导出"];
+  n1 -> n2 -> n3 -> n4 -> n5 -> n6 -> n7 -> n8 -> n9 -> n10 -> n11 -> n12 -> n13;
+  n11 -> n6 [label="重生成", style=dashed];
+  n11 -> n4 [label="重做关键帧", style=dashed];
+}

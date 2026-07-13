@@ -1,0 +1,42 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", fontname="Noto Sans CJK SC", nodesep=0.35, ranksep=0.55];
+  node [shape=box, style="rounded,filled", fillcolor="#F6F8FA", color="#667085", fontname="Noto Sans CJK SC", fontsize=11];
+  edge [color="#667085", arrowsize=0.7];
+
+  subgraph cluster_ui { label="Studio UI"; color="#AAB7CF"; style="rounded";
+    ui1 [label="剧本 / 分镜 / 资产"];
+    ui2 [label="时间线 / 审核 / 运维"];
+  }
+  subgraph cluster_control { label="Control Plane - Phoenix / Elixir"; color="#AAB7CF"; style="rounded";
+    c1 [label="Canonical Data Service"];
+    c2 [label="Script & Prompt Compiler"];
+    c3 [label="Workflow Orchestrator"];
+    c4 [label="Model Router / Provider Registry"];
+    c5 [label="Review & Quality Decision"];
+    c6 [label="Asset Registry"];
+  }
+  subgraph cluster_exec { label="Execution Plane"; color="#AAB7CF"; style="rounded";
+    e1 [label="LLM Providers\nOpus / Sonnet / GPT / Gemini"];
+    e2 [label="Visual Providers\nSeedream / Seedance"];
+    e3 [label="Audio Providers\nGPT-SoVITS / Suno / Derived SFX"];
+    e4 [label="Media Worker\nFFmpeg / ffprobe"];
+    e5 [label="CV Worker\nOpenCV / MediaPipe / Identity"];
+  }
+  subgraph cluster_data { label="Data Plane"; color="#AAB7CF"; style="rounded";
+    d1 [label="PostgreSQL\n事实 / 版本 / Job / QC"];
+    d2 [label="MinIO / S3\n图像 / 视频 / 音频 / 导出"];
+    d3 [label="Telemetry / Audit"];
+  }
+  subgraph cluster_agent { label="Agent Plane"; color="#AAB7CF"; style="rounded";
+    a1 [label="ACP Gateway\nClaude Code / Codex"];
+    a2 [label="MCP Project Tools"];
+  }
+
+  ui1 -> c1; ui2 -> c3; ui2 -> c5;
+  c1 -> c2 -> c3 -> c4;
+  c4 -> e1; c4 -> e2; c4 -> e3;
+  c3 -> e4; c3 -> e5;
+  e1 -> c5; e2 -> c6; e3 -> c6; e4 -> c6; e5 -> c5;
+  c1 -> d1; c3 -> d1; c5 -> d1; c6 -> d2; c3 -> d3;
+  a1 -> a2 -> c1; a2 -> c3;
+}

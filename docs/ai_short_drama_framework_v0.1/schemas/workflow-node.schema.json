@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "WorkflowNode",
+  "type": "object",
+  "required": [
+    "id",
+    "node_type",
+    "capability_mode",
+    "dependencies",
+    "on_success",
+    "on_failure"
+  ],
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "node_type": {
+      "type": "string"
+    },
+    "capability_mode": {
+      "type": "string",
+      "enum": [
+        "AUTOMATED",
+        "RULE_BASED",
+        "MANUAL",
+        "UNAVAILABLE"
+      ]
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "idempotency_key": {
+      "type": "string"
+    },
+    "provider_capability": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "on_success": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "on_failure": {
+      "type": "string",
+      "enum": [
+        "retry",
+        "manual_action_required",
+        "blocked",
+        "skip_by_policy",
+        "fallback_provider"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

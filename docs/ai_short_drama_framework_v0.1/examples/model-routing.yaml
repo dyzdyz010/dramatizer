@@ -1,0 +1,33 @@
+model_routes:
+  story_architecture:
+    primary: claude-opus-4.8
+    reviewer: gpt-5.6-sol
+
+  episode_writing:
+    primary: claude-sonnet-5
+    escalation: claude-opus-4.8
+
+  canonical_compile:
+    primary: gpt-5.6-terra
+    lint: gpt-5.6-luna
+
+  image_generation:
+    primary: seedream-5.0
+
+  video_generation:
+    primary: seedance-2.0
+
+  video_understanding:
+    primary: gemini
+    narrative_reviewer: claude-opus-4.8
+    arbitration: gpt-5.6-sol
+
+  voice:
+    primary: gpt-sovits
+
+  music:
+    primary: suno
+
+  sound_effect:
+    search_first: internal-sfx-library
+    fallback: seedance-derived-sfx

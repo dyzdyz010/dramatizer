@@ -1,0 +1,682 @@
+{
+  "provider_catalog": [
+    {
+      "provider_id": "seedance",
+      "adapter_version": "seedance-adapter-2.1.0",
+      "enabled": true,
+      "data_region": "cn",
+      "models": [
+        {
+          "model_id": "seedance-video",
+          "model_version": "2026-06-pinned",
+          "enabled": true,
+          "static_capabilities": [
+            {
+              "capability": "video_generation",
+              "supported": true,
+              "constraints": [
+                { "name": "aspect_ratio", "operator": "in", "value": ["9:16", "16:9"], "extensions": [] },
+                { "name": "duration_seconds", "operator": "lte", "value": 10, "extensions": [] }
+              ],
+              "declared_at": "2026-07-01T00:00:00Z",
+              "extensions": []
+            },
+            {
+              "capability": "native_audio",
+              "supported": true,
+              "constraints": [],
+              "declared_at": "2026-07-01T00:00:00Z",
+              "extensions": []
+            }
+          ],
+          "pricing_version": "seedance-price-2026-07",
+          "extensions": []
+        }
+      ],
+      "catalog_version": "catalog-2026-07-13-01",
+      "extensions": []
+    },
+    {
+      "provider_id": "backup_video",
+      "adapter_version": "backup-video-adapter-1.4.0",
+      "enabled": true,
+      "data_region": "sg",
+      "models": [
+        {
+          "model_id": "backup-video-standard",
+          "model_version": "2026-05-pinned",
+          "enabled": true,
+          "static_capabilities": [
+            {
+              "capability": "video_generation",
+              "supported": true,
+              "constraints": [
+                { "name": "aspect_ratio", "operator": "eq", "value": "9:16", "extensions": [] },
+                { "name": "duration_seconds", "operator": "lte", "value": 8, "extensions": [] }
+              ],
+              "declared_at": "2026-07-01T00:00:00Z",
+              "extensions": []
+            },
+            {
+              "capability": "native_audio",
+              "supported": false,
+              "constraints": [],
+              "declared_at": "2026-07-01T00:00:00Z",
+              "extensions": []
+            }
+          ],
+          "pricing_version": "backup-price-2026-07",
+          "extensions": []
+        }
+      ],
+      "catalog_version": "catalog-2026-07-13-01",
+      "extensions": []
+    }
+  ],
+  "health_snapshots": [
+    {
+      "id": "health_seedance_0805",
+      "provider_id": "seedance",
+      "model_id": "seedance-video",
+      "status": "healthy",
+      "success_rate_15m": 0.97,
+      "p95_latency_ms_15m": 340000,
+      "rate_limit_remaining": 18,
+      "circuit_state": "closed",
+      "observed_at": "2026-07-13T08:05:00Z",
+      "valid_until": "2026-07-13T08:10:00Z",
+      "extensions": []
+    },
+    {
+      "id": "health_backup_0805",
+      "provider_id": "backup_video",
+      "model_id": "backup-video-standard",
+      "status": "healthy",
+      "success_rate_15m": 0.95,
+      "p95_latency_ms_15m": 405000,
+      "rate_limit_remaining": 42,
+      "circuit_state": "closed",
+      "observed_at": "2026-07-13T08:05:00Z",
+      "valid_until": "2026-07-13T08:10:00Z",
+      "extensions": []
+    },
+    {
+      "id": "health_seedance_0820",
+      "provider_id": "seedance",
+      "model_id": "seedance-video",
+      "status": "unhealthy",
+      "success_rate_15m": 0.45,
+      "p95_latency_ms_15m": 600000,
+      "rate_limit_remaining": 17,
+      "circuit_state": "open",
+      "observed_at": "2026-07-13T08:20:00Z",
+      "valid_until": "2026-07-13T08:25:00Z",
+      "extensions": []
+    },
+    {
+      "id": "health_backup_0820",
+      "provider_id": "backup_video",
+      "model_id": "backup-video-standard",
+      "status": "healthy",
+      "success_rate_15m": 0.94,
+      "p95_latency_ms_15m": 410000,
+      "rate_limit_remaining": 40,
+      "circuit_state": "closed",
+      "observed_at": "2026-07-13T08:20:00Z",
+      "valid_until": "2026-07-13T08:25:00Z",
+      "extensions": []
+    }
+  ],
+  "route_policies": [
+    {
+      "id": "route_video_generation",
+      "version": 7,
+      "task_type": "video_generation",
+      "capability_requirements": [
+        {
+          "capability": "video_generation",
+          "necessity": "required",
+          "constraints": [
+            { "name": "aspect_ratio", "operator": "eq", "value": "9:16", "extensions": [] },
+            { "name": "duration_seconds", "operator": "lte", "value": 5, "extensions": [] }
+          ],
+          "extensions": []
+        },
+        {
+          "capability": "native_audio",
+          "necessity": "optional",
+          "constraints": [],
+          "extensions": []
+        }
+      ],
+      "candidates": [
+        {
+          "rank": 1,
+          "provider_id": "seedance",
+          "model_id": "seedance-video",
+          "allowed_health": ["healthy", "degraded"],
+          "fallback_on": ["quota", "rate_limit", "provider_transient", "timeout", "circuit_open"],
+          "extensions": []
+        },
+        {
+          "rank": 2,
+          "provider_id": "backup_video",
+          "model_id": "backup-video-standard",
+          "allowed_health": ["healthy"],
+          "fallback_on": ["quota", "rate_limit", "provider_transient", "timeout"],
+          "extensions": []
+        }
+      ],
+      "selection_strategy": "priority",
+      "max_fallbacks": 1,
+      "created_at": "2026-07-01T00:00:00Z",
+      "extensions": []
+    }
+  ],
+  "candidate_prefilter_snapshots": [
+    {
+      "id": "candidate_prefilter_video_initial",
+      "generation_task_id": "gt_video_fallback_demo",
+      "generation_spec_revision_id": "gsr_01JVIDEO",
+      "generation_spec_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "task_type": "video_generation",
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "provider_catalog_version": "catalog-2026-07-13-01",
+      "route_policy_id": "route_video_generation",
+      "route_policy_version": 7,
+      "health_snapshot_ids": ["health_seedance_0805", "health_backup_0805"],
+      "quota_snapshot_ids": ["quota_seedance_0805", "quota_backup_0805"],
+      "candidate_results": [
+        {
+          "provider_id": "seedance",
+          "model_id": "seedance-video",
+          "health_snapshot_id": "health_seedance_0805",
+          "quota_snapshot_id": "quota_seedance_0805",
+          "capability_match": true,
+          "eligible": true,
+          "rejection_codes": [],
+          "evidence_hash": "sha256:4242424242424242424242424242424242424242424242424242424242424242",
+          "extensions": []
+        },
+        {
+          "provider_id": "backup_video",
+          "model_id": "backup-video-standard",
+          "health_snapshot_id": "health_backup_0805",
+          "quota_snapshot_id": "quota_backup_0805",
+          "capability_match": true,
+          "eligible": true,
+          "rejection_codes": [],
+          "evidence_hash": "sha256:4343434343434343434343434343434343434343434343434343434343434343",
+          "extensions": []
+        }
+      ],
+      "eligible_provider_count": 2,
+      "evaluated_at": "2026-07-13T08:05:01Z",
+      "snapshot_hash": "sha256:3535353535353535353535353535353535353535353535353535353535353535",
+      "extensions": []
+    },
+    {
+      "id": "candidate_prefilter_video_fallback",
+      "generation_task_id": "gt_video_fallback_demo",
+      "generation_spec_revision_id": "gsr_01JVIDEO",
+      "generation_spec_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "task_type": "video_generation",
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "provider_catalog_version": "catalog-2026-07-13-01",
+      "route_policy_id": "route_video_generation",
+      "route_policy_version": 7,
+      "health_snapshot_ids": ["health_seedance_0820", "health_backup_0820"],
+      "quota_snapshot_ids": ["quota_seedance_0820", "quota_backup_0820"],
+      "candidate_results": [
+        {
+          "provider_id": "seedance",
+          "model_id": "seedance-video",
+          "health_snapshot_id": "health_seedance_0820",
+          "quota_snapshot_id": "quota_seedance_0820",
+          "capability_match": true,
+          "eligible": false,
+          "rejection_codes": ["circuit_open"],
+          "evidence_hash": "sha256:4444444444444444444444444444444444444444444444444444444444444444",
+          "extensions": []
+        },
+        {
+          "provider_id": "backup_video",
+          "model_id": "backup-video-standard",
+          "health_snapshot_id": "health_backup_0820",
+          "quota_snapshot_id": "quota_backup_0820",
+          "capability_match": true,
+          "eligible": true,
+          "rejection_codes": [],
+          "evidence_hash": "sha256:4545454545454545454545454545454545454545454545454545454545454545",
+          "extensions": []
+        }
+      ],
+      "eligible_provider_count": 1,
+      "evaluated_at": "2026-07-13T08:20:01Z",
+      "snapshot_hash": "sha256:3636363636363636363636363636363636363636363636363636363636363636",
+      "extensions": []
+    }
+  ],
+  "routing_requests": [
+    {
+      "id": "routing_req_candidate_0_initial",
+      "generation_task_id": "gt_video_fallback_demo",
+      "candidate_index": 0,
+      "task_type": "video_generation",
+      "node_capability_mode": "AUTOMATED",
+      "route_policy_id": "route_video_generation",
+      "route_policy_version": 7,
+      "capability_requirements": [
+        {
+          "capability": "video_generation",
+          "necessity": "required",
+          "constraints": [
+            { "name": "aspect_ratio", "operator": "eq", "value": "9:16", "extensions": [] },
+            { "name": "duration_seconds", "operator": "lte", "value": 5, "extensions": [] }
+          ],
+          "extensions": []
+        },
+        {
+          "capability": "native_audio",
+          "necessity": "optional",
+          "constraints": [],
+          "extensions": []
+        }
+      ],
+      "budget_context": {
+        "budget_scope_type": "project",
+        "budget_scope_id": "prj_drama_01",
+        "budget_period_id": "2026-07",
+        "currency": "USD",
+        "hard_limit": { "amount": "100.00", "currency": "USD" },
+        "remaining_before_reservation": { "amount": "10.00", "currency": "USD" },
+        "extensions": []
+      },
+      "correlation": {
+        "correlation_id": "corr_prj01_sh05_candidate0",
+        "project_id": "prj_drama_01",
+        "episode_id": "ep01",
+        "shot_plan_revision_id": "spr_ep01_sc03_sh05_r7",
+        "workflow_run_id": "wfr_fallback_demo",
+        "node_run_id": "nr_generate_fallback_demo",
+        "generation_task_id": "gt_video_fallback_demo",
+        "provider_attempt_id": null,
+        "asset_version_ids": [],
+        "trace": {
+          "trace_id": "11111111111111111111111111111111",
+          "span_id": "1111111111111111",
+          "trace_flags": "01",
+          "span_links": [
+            { "trace_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "span_id": "aaaaaaaaaaaaaaaa", "reason": "async_dispatch" }
+          ],
+          "extensions": []
+        },
+        "extensions": []
+      },
+      "requested_at": "2026-07-13T08:05:01Z",
+      "extensions": []
+    },
+    {
+      "id": "routing_req_candidate_0_fallback",
+      "generation_task_id": "gt_video_fallback_demo",
+      "candidate_index": 0,
+      "task_type": "video_generation",
+      "node_capability_mode": "AUTOMATED",
+      "route_policy_id": "route_video_generation",
+      "route_policy_version": 7,
+      "capability_requirements": [
+        {
+          "capability": "video_generation",
+          "necessity": "required",
+          "constraints": [
+            { "name": "aspect_ratio", "operator": "eq", "value": "9:16", "extensions": [] },
+            { "name": "duration_seconds", "operator": "lte", "value": 5, "extensions": [] }
+          ],
+          "extensions": []
+        },
+        {
+          "capability": "native_audio",
+          "necessity": "optional",
+          "constraints": [],
+          "extensions": []
+        }
+      ],
+      "budget_context": {
+        "budget_scope_type": "project",
+        "budget_scope_id": "prj_drama_01",
+        "budget_period_id": "2026-07",
+        "currency": "USD",
+        "hard_limit": { "amount": "100.00", "currency": "USD" },
+        "remaining_before_reservation": { "amount": "9.95", "currency": "USD" },
+        "extensions": []
+      },
+      "correlation": {
+        "correlation_id": "corr_prj01_sh05_candidate0",
+        "project_id": "prj_drama_01",
+        "episode_id": "ep01",
+        "shot_plan_revision_id": "spr_ep01_sc03_sh05_r7",
+        "workflow_run_id": "wfr_fallback_demo",
+        "node_run_id": "nr_generate_fallback_demo",
+        "generation_task_id": "gt_video_fallback_demo",
+        "provider_attempt_id": null,
+        "asset_version_ids": [],
+        "trace": {
+          "trace_id": "22222222222222222222222222222222",
+          "span_id": "2222222222222222",
+          "trace_flags": "01",
+          "span_links": [
+            { "trace_id": "11111111111111111111111111111111", "span_id": "1111111111111111", "reason": "fallback" }
+          ],
+          "extensions": []
+        },
+        "extensions": []
+      },
+      "requested_at": "2026-07-13T08:20:01Z",
+      "extensions": []
+    }
+  ],
+  "resolved_execution_plans": [
+    {
+      "id": "rep_video_0_initial",
+      "routing_request_id": "routing_req_candidate_0_initial",
+      "resolution_kind": "initial",
+      "provider_id": "seedance",
+      "model_id": "seedance-video",
+      "model_version": "2026-06-pinned",
+      "adapter_version": "seedance-adapter-2.1.0",
+      "provider_catalog_version": "catalog-2026-07-13-01",
+      "health_snapshot_id": "health_seedance_0805",
+      "candidate_prefilter_snapshot_id": "candidate_prefilter_video_initial",
+      "candidate_prefilter_snapshot_hash": "sha256:3535353535353535353535353535353535353535353535353535353535353535",
+      "capability_resolutions": [
+        { "capability": "video_generation", "necessity": "required", "satisfied": true, "evidence": "aspect 9:16 and duration 5s are within catalog constraints", "extensions": [] },
+        { "capability": "native_audio", "necessity": "optional", "satisfied": true, "evidence": "catalog declares support", "extensions": [] }
+      ],
+      "rights_gate_snapshot_id": "rgs_video_generation_seedance_demo_allowed",
+      "rights_gate_snapshot_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "rights_gate_decision_at_pin": "allowed",
+      "rights_gate_valid_until": "2026-07-20T00:00:00Z",
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "budget_gate": {
+        "decision": "allow",
+        "reason": "project budget has sufficient available balance",
+        "estimated_cost_id": "estimate_video_0_initial",
+        "reservation_id": "reservation_video_0_initial",
+        "decided_at": "2026-07-13T08:05:02Z",
+        "extensions": []
+      },
+      "budget_reservation_status_at_pin": "held",
+      "pinned_at": "2026-07-13T08:05:02Z",
+      "correlation": {
+        "correlation_id": "corr_prj01_sh05_candidate0",
+        "project_id": "prj_drama_01",
+        "episode_id": "ep01",
+        "shot_plan_revision_id": "spr_ep01_sc03_sh05_r7",
+        "workflow_run_id": "wfr_fallback_demo",
+        "node_run_id": "nr_generate_fallback_demo",
+        "generation_task_id": "gt_video_fallback_demo",
+        "provider_attempt_id": null,
+        "asset_version_ids": [],
+        "trace": {
+          "trace_id": "11111111111111111111111111111111",
+          "span_id": "1111111111111111",
+          "trace_flags": "01",
+          "span_links": [],
+          "extensions": []
+        },
+        "extensions": []
+      },
+      "extensions": []
+    },
+    {
+      "id": "rep_video_0_fallback",
+      "routing_request_id": "routing_req_candidate_0_fallback",
+      "resolution_kind": "fallback",
+      "previous_execution_plan_id": "rep_video_0_initial",
+      "fallback_reason": "primary attempt timed out after reconciliation confirmed no output",
+      "provider_id": "backup_video",
+      "model_id": "backup-video-standard",
+      "model_version": "2026-05-pinned",
+      "adapter_version": "backup-video-adapter-1.4.0",
+      "provider_catalog_version": "catalog-2026-07-13-01",
+      "health_snapshot_id": "health_backup_0820",
+      "candidate_prefilter_snapshot_id": "candidate_prefilter_video_fallback",
+      "candidate_prefilter_snapshot_hash": "sha256:3636363636363636363636363636363636363636363636363636363636363636",
+      "capability_resolutions": [
+        { "capability": "video_generation", "necessity": "required", "satisfied": true, "evidence": "aspect 9:16 and duration 5s are within catalog constraints", "extensions": [] },
+        { "capability": "native_audio", "necessity": "optional", "satisfied": false, "evidence": "optional capability unavailable; downstream audio replacement required", "extensions": [] }
+      ],
+      "rights_gate_snapshot_id": "rgs_video_generation_backup_allowed",
+      "rights_gate_snapshot_hash": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "rights_gate_decision_at_pin": "allowed",
+      "rights_gate_valid_until": "2026-07-20T00:00:00Z",
+      "intended_use_hash": "sha256:abababababababababababababababababababababababababababababababab",
+      "budget_gate": {
+        "decision": "allow",
+        "reason": "fallback estimate remains inside project budget",
+        "estimated_cost_id": "estimate_video_0_fallback",
+        "reservation_id": "reservation_video_0_fallback",
+        "decided_at": "2026-07-13T08:20:02Z",
+        "extensions": []
+      },
+      "budget_reservation_status_at_pin": "held",
+      "pinned_at": "2026-07-13T08:20:02Z",
+      "correlation": {
+        "correlation_id": "corr_prj01_sh05_candidate0",
+        "project_id": "prj_drama_01",
+        "episode_id": "ep01",
+        "shot_plan_revision_id": "spr_ep01_sc03_sh05_r7",
+        "workflow_run_id": "wfr_fallback_demo",
+        "node_run_id": "nr_generate_fallback_demo",
+        "generation_task_id": "gt_video_fallback_demo",
+        "provider_attempt_id": null,
+        "asset_version_ids": [],
+        "trace": {
+          "trace_id": "22222222222222222222222222222222",
+          "span_id": "2222222222222222",
+          "trace_flags": "01",
+          "span_links": [
+            { "trace_id": "11111111111111111111111111111111", "span_id": "1111111111111111", "reason": "fallback" }
+          ],
+          "extensions": []
+        },
+        "extensions": []
+      },
+      "extensions": []
+    }
+  ],
+  "cost_estimates": [
+    {
+      "id": "estimate_video_0_initial",
+      "generation_task_id": "gt_video_fallback_demo",
+      "candidate_index": 0,
+      "provider_id": "seedance",
+      "model_id": "seedance-video",
+      "pricing_version": "seedance-price-2026-07",
+      "line_items": [
+        {
+          "pricing_dimension": "generated_video_duration",
+          "usage": { "quantity": "5", "unit": "video_second" },
+          "unit_price": { "amount": "0.10", "currency": "USD" },
+          "subtotal": { "amount": "0.50", "currency": "USD" },
+          "extensions": []
+        }
+      ],
+      "total": { "amount": "0.50", "currency": "USD" },
+      "confidence": "bounded",
+      "estimated_at": "2026-07-13T08:05:02Z",
+      "expires_at": "2026-07-13T08:15:02Z",
+      "extensions": []
+    },
+    {
+      "id": "estimate_video_0_fallback",
+      "generation_task_id": "gt_video_fallback_demo",
+      "candidate_index": 0,
+      "provider_id": "backup_video",
+      "model_id": "backup-video-standard",
+      "pricing_version": "backup-price-2026-07",
+      "line_items": [
+        {
+          "pricing_dimension": "generated_video_duration",
+          "usage": { "quantity": "5", "unit": "video_second" },
+          "unit_price": { "amount": "0.16", "currency": "USD" },
+          "subtotal": { "amount": "0.80", "currency": "USD" },
+          "extensions": []
+        }
+      ],
+      "total": { "amount": "0.80", "currency": "USD" },
+      "confidence": "bounded",
+      "estimated_at": "2026-07-13T08:20:02Z",
+      "expires_at": "2026-07-13T08:30:02Z",
+      "extensions": []
+    }
+  ],
+  "budget_reservations": [
+    {
+      "id": "reservation_video_0_initial",
+      "cost_estimate_id": "estimate_video_0_initial",
+      "budget_scope_type": "project",
+      "budget_scope_id": "prj_drama_01",
+      "amount": { "amount": "0.50", "currency": "USD" },
+      "status": "consumed",
+      "consumed_amount": { "amount": "0.05", "currency": "USD" },
+      "released_amount": { "amount": "0.45", "currency": "USD" },
+      "actual_cost_ids": ["actual_seedance_timeout"],
+      "reserved_at": "2026-07-13T08:05:02Z",
+      "expires_at": "2026-07-13T08:15:02Z",
+      "settled_at": "2026-07-13T08:21:00Z",
+      "extensions": []
+    },
+    {
+      "id": "reservation_video_0_fallback",
+      "cost_estimate_id": "estimate_video_0_fallback",
+      "budget_scope_type": "project",
+      "budget_scope_id": "prj_drama_01",
+      "amount": { "amount": "0.80", "currency": "USD" },
+      "status": "consumed",
+      "consumed_amount": { "amount": "0.78", "currency": "USD" },
+      "released_amount": { "amount": "0.02", "currency": "USD" },
+      "actual_cost_ids": ["actual_backup_success"],
+      "reserved_at": "2026-07-13T08:20:02Z",
+      "expires_at": "2026-07-13T08:30:02Z",
+      "settled_at": "2026-07-13T08:29:00Z",
+      "extensions": []
+    }
+  ],
+  "actual_costs": [
+    {
+      "id": "actual_seedance_timeout",
+      "provider_attempt_id": "pat_video_0_initial",
+      "provider_id": "seedance",
+      "model_id": "seedance-video",
+      "pricing_version": "seedance-price-2026-07",
+      "line_items": [
+        {
+          "pricing_dimension": "failed_request_fee",
+          "usage": { "quantity": "1", "unit": "request" },
+          "unit_price": { "amount": "0.05", "currency": "USD" },
+          "subtotal": { "amount": "0.05", "currency": "USD" },
+          "extensions": []
+        }
+      ],
+      "total": { "amount": "0.05", "currency": "USD" },
+      "source": "provider_response",
+      "recorded_at": "2026-07-13T08:21:00Z",
+      "extensions": []
+    },
+    {
+      "id": "actual_backup_success",
+      "provider_attempt_id": "pat_video_0_fallback",
+      "provider_id": "backup_video",
+      "model_id": "backup-video-standard",
+      "pricing_version": "backup-price-2026-07",
+      "line_items": [
+        {
+          "pricing_dimension": "generated_video_duration",
+          "usage": { "quantity": "5", "unit": "video_second" },
+          "unit_price": { "amount": "0.156", "currency": "USD" },
+          "subtotal": { "amount": "0.78", "currency": "USD" },
+          "extensions": []
+        }
+      ],
+      "total": { "amount": "0.78", "currency": "USD" },
+      "source": "provider_response",
+      "recorded_at": "2026-07-13T08:29:00Z",
+      "extensions": []
+    }
+  ],
+  "quota_snapshots": [
+    {
+      "id": "quota_seedance_0805",
+      "provider_id": "seedance",
+      "model_id": "seedance-video",
+      "quota_name": "daily_video_seconds",
+      "limit": "1000",
+      "used": "650",
+      "remaining": "350",
+      "unit": "video_second",
+      "window_start": "2026-07-13T00:00:00Z",
+      "window_end": "2026-07-14T00:00:00Z",
+      "observed_at": "2026-07-13T08:05:00Z",
+      "extensions": []
+    },
+    {
+      "id": "quota_backup_0805",
+      "provider_id": "backup_video",
+      "model_id": "backup-video-standard",
+      "quota_name": "daily_requests",
+      "limit": "500",
+      "used": "119",
+      "remaining": "381",
+      "unit": "request",
+      "window_start": "2026-07-13T00:00:00Z",
+      "window_end": "2026-07-14T00:00:00Z",
+      "observed_at": "2026-07-13T08:05:00Z",
+      "extensions": []
+    },
+    {
+      "id": "quota_seedance_0820",
+      "provider_id": "seedance",
+      "model_id": "seedance-video",
+      "quota_name": "daily_video_seconds",
+      "limit": "1000",
+      "used": "655",
+      "remaining": "345",
+      "unit": "video_second",
+      "window_start": "2026-07-13T00:00:00Z",
+      "window_end": "2026-07-14T00:00:00Z",
+      "observed_at": "2026-07-13T08:20:00Z",
+      "extensions": []
+    },
+    {
+      "id": "quota_backup_0820",
+      "provider_id": "backup_video",
+      "model_id": "backup-video-standard",
+      "quota_name": "daily_requests",
+      "limit": "500",
+      "used": "121",
+      "remaining": "379",
+      "unit": "request",
+      "window_start": "2026-07-13T00:00:00Z",
+      "window_end": "2026-07-14T00:00:00Z",
+      "observed_at": "2026-07-13T08:20:00Z",
+      "extensions": []
+    }
+  ],
+  "redaction_policy": {
+    "id": "redact_provider_telemetry",
+    "version": 4,
+    "default_action": "allow",
+    "prohibited_log_fields": ["authorization", "api_key", "cookie", "callback_signature", "signed_url_query", "prompt_body", "raw_request", "raw_response"],
+    "rules": [
+      { "field_pattern": "(?i)(authorization|api[_-]?key|secret|token)", "action": "drop", "replacement": "", "extensions": [] },
+      { "field_pattern": "(?i)(signed_url|presigned_url)", "action": "mask", "replacement": "[URL_REDACTED]", "extensions": [] },
+      { "field_pattern": "(?i)(user_text|prompt_body)", "action": "hash", "replacement": "[CONTENT_HASH]", "extensions": [] }
+    ],
+    "allow_prompt_body_in_logs": false,
+    "allow_signed_url_query_in_logs": false,
+    "created_at": "2026-07-01T00:00:00Z",
+    "extensions": []
+  },
+  "extensions": []
+}

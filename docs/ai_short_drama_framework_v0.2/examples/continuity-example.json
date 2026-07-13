@@ -1,0 +1,422 @@
+{
+  "schema_version": "0.2",
+  "snapshots": [
+    {
+      "snapshot_id": "csnap_24a7a975-d283-4f4f-9df1-38d83a120e71",
+      "snapshot_kind": "continuity_seed",
+      "boundary": {
+        "position": "start",
+        "offset_ms": 0
+      },
+      "basis": {
+        "basis_type": "narrative_revision",
+        "source_refs": [
+          {
+            "entity_type": "scene_revision",
+            "logical_id": "ep01_sc03",
+            "revision_id": "rev_490e08ab-6c93-45d7-b5c9-5ae0a44edb99"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "subject_ref": {
+            "entity_type": "prop_version",
+            "logical_id": "prop_contract",
+            "revision_id": "rev_1f32d25a-14eb-4bf1-91f1-09f7d3402321"
+          },
+          "attribute_path": "/possession/holder_hand",
+          "state": {
+            "presence": "known",
+            "value": "char_lin.right_hand"
+          }
+        }
+      ],
+      "created_at": "2026-07-13T08:20:00Z",
+      "created_by": {
+        "actor_type": "service",
+        "actor_id": "narrative_service"
+      },
+      "extensions": []
+    },
+    {
+      "snapshot_id": "csnap_8b3f0d72-c8f5-49d3-8c2b-83161a50b08c",
+      "snapshot_kind": "planned_start",
+      "shot_plan_revision_ref": {
+        "entity_type": "shot_plan_revision",
+        "logical_id": "ep01_sc03_sh05",
+        "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a"
+      },
+      "boundary": {
+        "position": "start",
+        "offset_ms": 0
+      },
+      "basis": {
+        "basis_type": "director_plan",
+        "source_refs": [
+          {
+            "entity_type": "shot_plan_revision",
+            "logical_id": "ep01_sc03_sh05",
+            "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "subject_ref": {
+            "entity_type": "prop_version",
+            "logical_id": "prop_contract",
+            "revision_id": "rev_1f32d25a-14eb-4bf1-91f1-09f7d3402321"
+          },
+          "attribute_path": "/possession/holder_hand",
+          "state": {
+            "presence": "known",
+            "value": "char_lin.right_hand"
+          }
+        },
+        {
+          "subject_ref": {
+            "entity_type": "location_version",
+            "logical_id": "meeting_room",
+            "revision_id": "rev_6b297f91-493a-45b4-a600-64b0da529e88"
+          },
+          "attribute_path": "/occupants/unexpected_person",
+          "state": {
+            "presence": "not_present",
+            "reason_code": "script_requires_two_people"
+          }
+        },
+        {
+          "subject_ref": {
+            "entity_type": "character_version",
+            "logical_id": "char_lin",
+            "revision_id": "rev_e3aaf7e6-0c62-4dab-a181-4089b75647b2"
+          },
+          "attribute_path": "/emotion/current",
+          "state": {
+            "presence": "known",
+            "value": "calm"
+          }
+        }
+      ],
+      "created_at": "2026-07-13T08:30:00Z",
+      "created_by": {
+        "actor_type": "user",
+        "actor_id": "director_lin"
+      },
+      "extensions": []
+    },
+    {
+      "snapshot_id": "csnap_dddbb428-a99d-452e-b12a-fe7d3fb77054",
+      "snapshot_kind": "planned_end",
+      "shot_plan_revision_ref": {
+        "entity_type": "shot_plan_revision",
+        "logical_id": "ep01_sc03_sh05",
+        "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a"
+      },
+      "boundary": {
+        "position": "end",
+        "offset_ms": 4500
+      },
+      "basis": {
+        "basis_type": "director_plan",
+        "source_refs": [
+          {
+            "entity_type": "shot_plan_revision",
+            "logical_id": "ep01_sc03_sh05",
+            "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "subject_ref": {
+            "entity_type": "prop_version",
+            "logical_id": "prop_contract",
+            "revision_id": "rev_1f32d25a-14eb-4bf1-91f1-09f7d3402321"
+          },
+          "attribute_path": "/possession/holder_hand",
+          "state": {
+            "presence": "known",
+            "value": "char_lin.right_hand"
+          }
+        },
+        {
+          "subject_ref": {
+            "entity_type": "character_version",
+            "logical_id": "char_lin",
+            "revision_id": "rev_e3aaf7e6-0c62-4dab-a181-4089b75647b2"
+          },
+          "attribute_path": "/emotion/current",
+          "state": {
+            "presence": "known",
+            "value": "suspicious"
+          }
+        }
+      ],
+      "created_at": "2026-07-13T08:30:00Z",
+      "created_by": {
+        "actor_type": "user",
+        "actor_id": "director_lin"
+      },
+      "extensions": []
+    },
+    {
+      "snapshot_id": "csnap_5f56cbd8-2ad4-4396-a462-b58226c47a48",
+      "snapshot_kind": "approved_end",
+      "shot_plan_revision_ref": {
+        "entity_type": "shot_plan_revision",
+        "logical_id": "ep01_sc03_sh05",
+        "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a"
+      },
+      "boundary": {
+        "position": "end",
+        "offset_ms": 4500
+      },
+      "basis": {
+        "basis_type": "continuity_approval",
+        "source_refs": [
+          {
+            "entity_type": "continuity_approval",
+            "id": "capproval_4fae14da-3070-46f4-9acd-27fde12fd8a6"
+          }
+        ]
+      },
+      "facts": [
+        {
+          "subject_ref": {
+            "entity_type": "prop_version",
+            "logical_id": "prop_contract",
+            "revision_id": "rev_1f32d25a-14eb-4bf1-91f1-09f7d3402321"
+          },
+          "attribute_path": "/possession/holder_hand",
+          "state": {
+            "presence": "known",
+            "value": "char_lin.left_hand"
+          },
+          "note": "人工接受候选中的换手偏差；下游镜头需要重新校验。"
+        },
+        {
+          "subject_ref": {
+            "entity_type": "character_version",
+            "logical_id": "char_lin",
+            "revision_id": "rev_e3aaf7e6-0c62-4dab-a181-4089b75647b2"
+          },
+          "attribute_path": "/emotion/current",
+          "state": {
+            "presence": "known",
+            "value": "suspicious"
+          }
+        }
+      ],
+      "created_at": "2026-07-13T09:05:00Z",
+      "created_by": {
+        "actor_type": "user",
+        "actor_id": "reviewer_chen"
+      },
+      "extensions": []
+    }
+  ],
+  "transitions": [
+    {
+      "transition_id": "ctrans_c4909c59-f1ac-4d9f-9c46-45d334320c1f",
+      "shot_plan_revision_ref": {
+        "entity_type": "shot_plan_revision",
+        "logical_id": "ep01_sc03_sh05",
+        "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a"
+      },
+      "from_snapshot_id": "csnap_8b3f0d72-c8f5-49d3-8c2b-83161a50b08c",
+      "to_snapshot_id": "csnap_dddbb428-a99d-452e-b12a-fe7d3fb77054",
+      "actions": [
+        {
+          "action_id": "action_recognize_seal",
+          "story_event_id": "event_emotion_calm_to_suspicious",
+          "subject_ref": {
+            "entity_type": "character_version",
+            "logical_id": "char_lin",
+            "revision_id": "rev_e3aaf7e6-0c62-4dab-a181-4089b75647b2"
+          },
+          "attribute_path": "/emotion/current",
+          "operation": "set",
+          "expected_before": {
+            "presence": "known",
+            "value": "calm"
+          },
+          "planned_after": {
+            "presence": "known",
+            "value": "suspicious"
+          },
+          "time_range": {
+            "start_ms": 1700,
+            "end_ms": 3500
+          }
+        },
+        {
+          "action_id": "action_hold_contract",
+          "story_event_id": "event_contract_seal_recognized",
+          "subject_ref": {
+            "entity_type": "prop_version",
+            "logical_id": "prop_contract",
+            "revision_id": "rev_1f32d25a-14eb-4bf1-91f1-09f7d3402321"
+          },
+          "attribute_path": "/possession/holder_hand",
+          "operation": "assert_unchanged",
+          "expected_before": {
+            "presence": "known",
+            "value": "char_lin.right_hand"
+          },
+          "planned_after": {
+            "presence": "known",
+            "value": "char_lin.right_hand"
+          },
+          "time_range": {
+            "start_ms": 0,
+            "end_ms": 4500
+          }
+        }
+      ],
+      "created_at": "2026-07-13T08:30:00Z",
+      "extensions": []
+    }
+  ],
+  "detected_observations": [
+    {
+      "observation_id": "obs_ee101c03-62d3-402f-963c-67e8e1211c2a",
+      "shot_plan_revision_ref": {
+        "entity_type": "shot_plan_revision",
+        "logical_id": "ep01_sc03_sh05",
+        "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a"
+      },
+      "generation_attempt_ref": {
+        "entity_type": "generation_attempt",
+        "id": "attempt_2e6d0ec7-5510-43ab-9c67-e0a94de95d2b"
+      },
+      "candidate_asset_version_ref": {
+        "entity_type": "asset_version",
+        "logical_id": "ep01_sc03_sh05_candidate_a",
+        "revision_id": "rev_f501808f-7c4f-4179-ae2f-4c7853f31d73"
+      },
+      "detector": {
+        "detector_type": "computer_vision",
+        "implementation": "hand_object_tracker",
+        "implementation_version": "0.4.1",
+        "config_hash": "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+      },
+      "observation_scope": [
+        "/possession/holder_hand",
+        "/emotion/current"
+      ],
+      "observed_facts": [
+        {
+          "subject_ref": {
+            "entity_type": "prop_version",
+            "logical_id": "prop_contract",
+            "revision_id": "rev_1f32d25a-14eb-4bf1-91f1-09f7d3402321"
+          },
+          "attribute_path": "/possession/holder_hand",
+          "observed_state": {
+            "presence": "known",
+            "value": "char_lin.left_hand"
+          },
+          "confidence": {
+            "score": 0.93,
+            "calibration_id": "hand_tracker_cal_2026q2"
+          },
+          "time_range": {
+            "start_ms": 2100,
+            "end_ms": 4500
+          },
+          "evidence_refs": [
+            {
+              "entity_type": "asset_version",
+              "logical_id": "ep01_sc03_sh05_hand_track",
+              "revision_id": "rev_a852f3fa-1704-4c40-bb31-1959ff5c9d74"
+            }
+          ]
+        },
+        {
+          "subject_ref": {
+            "entity_type": "character_version",
+            "logical_id": "char_lin",
+            "revision_id": "rev_e3aaf7e6-0c62-4dab-a181-4089b75647b2"
+          },
+          "attribute_path": "/emotion/current",
+          "observed_state": {
+            "presence": "unknown",
+            "reason_code": "face_partially_occluded"
+          },
+          "confidence": {
+            "score": 0.31,
+            "calibration_id": "emotion_cal_2026q2"
+          },
+          "time_range": {
+            "start_ms": 1700,
+            "end_ms": 4500
+          },
+          "evidence_refs": [
+            {
+              "entity_type": "asset_version",
+              "logical_id": "ep01_sc03_sh05_contact_sheet",
+              "revision_id": "rev_c2a9c439-30fe-44ee-a937-aa0e30fbce34"
+            }
+          ]
+        }
+      ],
+      "created_at": "2026-07-13T08:58:00Z",
+      "extensions": []
+    }
+  ],
+  "approvals": [
+    {
+      "approval_id": "capproval_4fae14da-3070-46f4-9acd-27fde12fd8a6",
+      "shot_plan_revision_ref": {
+        "entity_type": "shot_plan_revision",
+        "logical_id": "ep01_sc03_sh05",
+        "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a"
+      },
+      "decision": "accept_observation",
+      "input_snapshot_ids": [
+        "csnap_dddbb428-a99d-452e-b12a-fe7d3fb77054"
+      ],
+      "input_observation_ids": [
+        "obs_ee101c03-62d3-402f-963c-67e8e1211c2a"
+      ],
+      "approved_snapshot_id": "csnap_5f56cbd8-2ad4-4396-a462-b58226c47a48",
+      "decided_at": "2026-07-13T09:05:00Z",
+      "decided_by": {
+        "actor_type": "user",
+        "actor_id": "reviewer_chen"
+      },
+      "authority": "human",
+      "reason": "换手不改变本镜头叙事事实，接受偏差并要求下游镜头按左手持合同重新校验。",
+      "extensions": []
+    }
+  ],
+  "edges": [
+    {
+      "edge_id": "cedge_62a38466-f5b3-48e7-b6e2-20f364e25924",
+      "track_id": "main_narrative",
+      "ordinal": 4,
+      "predecessor": {
+        "snapshot_id": "csnap_24a7a975-d283-4f4f-9df1-38d83a120e71"
+      },
+      "successor": {
+        "shot_plan_revision_ref": {
+          "entity_type": "shot_plan_revision",
+          "logical_id": "ep01_sc03_sh05",
+          "revision_id": "rev_2c1c45b4-4f85-4f03-8ca9-7a3eb7cc5f0a"
+        },
+        "planned_start_snapshot_id": "csnap_8b3f0d72-c8f5-49d3-8c2b-83161a50b08c"
+      },
+      "relation": "continuous",
+      "comparison_policy_ref": {
+        "entity_type": "continuity_policy_revision",
+        "logical_id": "main_dialogue_continuity",
+        "revision_id": "rev_2a224502-3a09-4644-a0dd-555927164948"
+      },
+      "created_at": "2026-07-13T08:31:00Z",
+      "extensions": []
+    }
+  ],
+  "extensions": []
+}

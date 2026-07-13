@@ -1,0 +1,780 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dramatizer.local/schemas/v0.2/workflow-runtime.schema.json",
+  "title": "Workflow Runtime Contract Snapshot",
+  "description": "A validation envelope for workflow definitions, runtime entities, delivery records, and upload finalization boundaries. Persisted entities may be stored separately but retain these identifiers and invariants.",
+  "type": "object",
+  "required": [
+    "workflow_definition",
+    "workflow_run",
+    "node_runs",
+    "human_tasks",
+    "generation_tasks",
+    "provider_attempts",
+    "asset_versions",
+    "render_input_manifests",
+    "release_manifests",
+    "publish_attempts",
+    "callback_inbox",
+    "callback_outbox",
+    "upload_intents",
+    "extensions"
+  ],
+  "properties": {
+    "workflow_definition": { "$ref": "#/$defs/workflowDefinition" },
+    "workflow_run": { "$ref": "#/$defs/workflowRun" },
+    "node_runs": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/nodeRun" }
+    },
+    "human_tasks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/humanTask" }
+    },
+    "generation_tasks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/generationTask" }
+    },
+    "provider_attempts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/providerAttempt" }
+    },
+    "asset_versions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/assetVersionRef" }
+    },
+    "render_input_manifests": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/renderInputManifest" }
+    },
+    "release_manifests": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/releaseManifest" }
+    },
+    "publish_attempts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/publishAttempt" }
+    },
+    "callback_inbox": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/callbackInboxRecord" }
+    },
+    "callback_outbox": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/outboxRecord" }
+    },
+    "upload_intents": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/uploadIntent" }
+    },
+    "extensions": { "$ref": "#/$defs/extensions" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "extensions": {
+      "$ref": "common.schema.json#/$defs/Extensions"
+    },
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" },
+        { "type": "boolean" },
+        { "type": "number" },
+        { "type": "string" },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+      ]
+    },
+    "namedValue": {
+      "type": "object",
+      "required": ["name", "value"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "value": { "$ref": "#/$defs/jsonValue" }
+      },
+      "additionalProperties": false
+    },
+    "errorInfo": {
+      "type": "object",
+      "required": ["code", "category", "retryable", "message", "extensions"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "category": {
+          "type": "string",
+          "enum": ["validation", "authentication", "authorization", "quota", "rate_limit", "provider_transient", "provider_permanent", "timeout", "cancelled", "stale_input", "internal", "unknown"]
+        },
+        "retryable": { "type": "boolean" },
+        "message": { "type": "string" },
+        "safe_details": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/namedValue" }
+        },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "binding": {
+      "type": "object",
+      "required": ["target", "source", "extensions"],
+      "properties": {
+        "target": { "type": "string", "pattern": "^/" },
+        "source": {
+          "type": "string",
+          "enum": ["workflow_input", "dependency_output", "fanout_item", "constant"]
+        },
+        "source_node_id": { "type": "string", "minLength": 1 },
+        "source_pointer": { "type": "string", "pattern": "^/" },
+        "constant": { "$ref": "#/$defs/jsonValue" },
+        "required": { "type": "boolean", "default": true },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "source": { "const": "dependency_output" } }, "required": ["source"] },
+          "then": { "required": ["source_node_id", "source_pointer"] }
+        },
+        {
+          "if": { "properties": { "source": { "const": "constant" } }, "required": ["source"] },
+          "then": { "required": ["constant"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "outputBinding": {
+      "type": "object",
+      "required": ["name", "source_pointer", "extensions"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "source_pointer": { "type": "string", "pattern": "^/" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "conditionSpec": {
+      "type": "object",
+      "required": ["language", "expression", "true_targets", "false_targets", "extensions"],
+      "properties": {
+        "language": { "const": "cel_v1" },
+        "expression": { "type": "string", "minLength": 1 },
+        "true_targets": { "type": "array", "items": { "type": "string" } },
+        "false_targets": { "type": "array", "items": { "type": "string" } },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "fanoutSpec": {
+      "type": "object",
+      "required": ["collection_pointer", "item_name", "max_parallelism", "extensions"],
+      "properties": {
+        "collection_pointer": { "type": "string", "pattern": "^/" },
+        "item_name": { "type": "string", "minLength": 1 },
+        "max_parallelism": { "type": "integer", "minimum": 1 },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "joinSpec": {
+      "type": "object",
+      "required": ["strategy", "cancel_remaining_after_satisfied", "extensions"],
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["all_terminal", "all_successful", "any_successful", "minimum_successful"]
+        },
+        "minimum_successful": { "type": "integer", "minimum": 1 },
+        "cancel_remaining_after_satisfied": { "type": "boolean" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "strategy": { "const": "minimum_successful" } }, "required": ["strategy"] },
+          "then": { "required": ["minimum_successful"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "humanGateSpec": {
+      "type": "object",
+      "required": ["form_schema_ref", "allowed_actions", "required_role", "claim_timeout_seconds", "sla_seconds", "hard_deadline_seconds", "escalation_policy_revision_id", "extensions"],
+      "properties": {
+        "form_schema_ref": { "type": "string", "minLength": 1 },
+        "allowed_actions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["approve", "reject", "request_change", "skip_by_policy", "upload_result", "cancel"] }
+        },
+        "required_role": { "type": "string", "minLength": 1 },
+        "claim_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "sla_seconds": { "type": "integer", "minimum": 1 },
+        "hard_deadline_seconds": { "type": "integer", "minimum": 1 },
+        "escalation_policy_revision_id": { "type": "string", "minLength": 1 },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "humanTask": {
+      "type": "object",
+      "required": ["id", "task_type", "owner_type", "owner_id", "input_snapshot_hash", "status", "required_role", "allowed_actions", "form_schema_ref", "claim_timeout_seconds", "sla_at", "hard_deadline_at", "escalation_policy_revision_id", "escalation_count", "created_at", "updated_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "task_type": { "type": "string", "enum": ["workflow_gate", "budget_review", "manual_capability"] },
+        "owner_type": { "type": "string", "enum": ["node_run", "generation_task"] },
+        "owner_id": { "type": "string", "minLength": 1 },
+        "input_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "status": { "type": "string", "enum": ["waiting", "claimed", "completed", "cancelled", "deadline_expired"] },
+        "required_role": { "type": "string", "minLength": 1 },
+        "allowed_actions": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "form_schema_ref": { "type": "string", "minLength": 1 },
+        "claim_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "sla_at": { "type": "string", "format": "date-time" },
+        "hard_deadline_at": { "type": "string", "format": "date-time" },
+        "escalation_policy_revision_id": { "type": "string", "minLength": 1 },
+        "escalation_count": { "type": "integer", "minimum": 0 },
+        "claimed_by": { "type": "string", "minLength": 1 },
+        "claim_expires_at": { "type": "string", "format": "date-time" },
+        "action": { "type": "string", "minLength": 1 },
+        "acted_by": { "type": "string", "minLength": 1 },
+        "acted_at": { "type": "string", "format": "date-time" },
+        "deadline_expired_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "claimed" } }, "required": ["status"] },
+          "then": { "required": ["claimed_by", "claim_expires_at"] }
+        },
+        {
+          "if": { "properties": { "status": { "const": "completed" } }, "required": ["status"] },
+          "then": { "required": ["action", "acted_by", "acted_at"] }
+        },
+        {
+          "if": { "properties": { "status": { "const": "deadline_expired" } }, "required": ["status"] },
+          "then": {
+            "required": ["deadline_expired_at"],
+            "properties": {
+              "claimed_by": false,
+              "claim_expires_at": false,
+              "action": false,
+              "acted_by": false,
+              "acted_at": false
+            }
+          },
+          "else": { "properties": { "deadline_expired_at": false } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "retryPolicy": {
+      "type": "object",
+      "required": ["max_attempts", "backoff", "initial_delay_seconds", "max_delay_seconds", "jitter", "retryable_categories", "extensions"],
+      "properties": {
+        "max_attempts": { "type": "integer", "minimum": 1 },
+        "backoff": { "type": "string", "enum": ["fixed", "exponential"] },
+        "initial_delay_seconds": { "type": "integer", "minimum": 0 },
+        "max_delay_seconds": { "type": "integer", "minimum": 0 },
+        "jitter": { "type": "boolean" },
+        "retryable_categories": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["rate_limit", "provider_transient", "timeout", "internal", "unknown"] }
+        },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "executionPolicy": {
+      "type": "object",
+      "required": ["timeout_seconds", "cancel_grace_seconds", "retry_policy", "stale_input_policy", "on_exhausted", "extensions"],
+      "properties": {
+        "timeout_seconds": { "type": "integer", "minimum": 1 },
+        "cancel_grace_seconds": { "type": "integer", "minimum": 0 },
+        "retry_policy": { "$ref": "#/$defs/retryPolicy" },
+        "stale_input_policy": { "type": "string", "enum": ["block", "require_decision", "allow_pinned_snapshot"] },
+        "on_exhausted": { "type": "string", "enum": ["fail_run", "allow_partial", "wait_human", "skip_by_policy"] },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "workflowNodeDefinition": {
+      "type": "object",
+      "required": ["id", "kind", "capability_mode", "depends_on", "input_bindings", "output_bindings", "execution_policy", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "type": "string", "enum": ["task", "condition", "fan_out", "join", "human_gate"] },
+        "handler": { "type": "string", "minLength": 1 },
+        "capability_mode": { "type": "string", "enum": ["AUTOMATED", "RULE_BASED", "MANUAL", "UNAVAILABLE"] },
+        "depends_on": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "input_bindings": { "type": "array", "items": { "$ref": "#/$defs/binding" } },
+        "output_bindings": { "type": "array", "items": { "$ref": "#/$defs/outputBinding" } },
+        "condition": { "$ref": "#/$defs/conditionSpec" },
+        "fan_out": { "$ref": "#/$defs/fanoutSpec" },
+        "join": { "$ref": "#/$defs/joinSpec" },
+        "human_gate": { "$ref": "#/$defs/humanGateSpec" },
+        "required_for_run": { "type": "boolean", "default": true },
+        "execution_policy": { "$ref": "#/$defs/executionPolicy" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        { "if": { "properties": { "kind": { "const": "task" } }, "required": ["kind"] }, "then": { "required": ["handler"] } },
+        { "if": { "properties": { "kind": { "const": "condition" } }, "required": ["kind"] }, "then": { "required": ["condition"] } },
+        { "if": { "properties": { "kind": { "const": "fan_out" } }, "required": ["kind"] }, "then": { "required": ["fan_out"] } },
+        { "if": { "properties": { "kind": { "const": "join" } }, "required": ["kind"] }, "then": { "required": ["join"] } },
+        { "if": { "properties": { "kind": { "const": "human_gate" } }, "required": ["kind"] }, "then": { "required": ["human_gate"] } }
+      ],
+      "additionalProperties": false
+    },
+    "workflowDefinition": {
+      "type": "object",
+      "required": ["id", "version", "graph_hash", "completion_mode", "nodes", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "integer", "minimum": 1 },
+        "graph_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "completion_mode": { "type": "string", "enum": ["all_required", "allow_partial"] },
+        "nodes": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/workflowNodeDefinition" } },
+        "created_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "inputReference": {
+      "type": "object",
+      "required": ["entity_type", "logical_id", "revision_id", "content_hash", "extensions"],
+      "properties": {
+        "entity_type": { "type": "string", "minLength": 1 },
+        "logical_id": { "type": "string", "minLength": 1 },
+        "revision_id": { "type": "string", "minLength": 1 },
+        "content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "inputSnapshot": {
+      "type": "object",
+      "required": ["snapshot_hash", "references", "values", "captured_at", "extensions"],
+      "properties": {
+        "snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "references": { "type": "array", "items": { "$ref": "#/$defs/inputReference" } },
+        "values": { "type": "array", "items": { "$ref": "#/$defs/namedValue" } },
+        "captured_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "runSummary": {
+      "type": "object",
+      "required": ["total", "succeeded", "failed", "skipped", "cancelled", "waiting", "extensions"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "succeeded": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 },
+        "cancelled": { "type": "integer", "minimum": 0 },
+        "waiting": { "type": "integer", "minimum": 0 },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "workflowRun": {
+      "type": "object",
+      "required": ["id", "workflow_definition_id", "workflow_definition_version", "project_id", "status", "input_snapshot", "business_idempotency_key", "summary", "created_at", "updated_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "workflow_definition_id": { "type": "string", "minLength": 1 },
+        "workflow_definition_version": { "type": "integer", "minimum": 1 },
+        "project_id": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["created", "queued", "running", "waiting_human", "cancelling", "completed", "partially_completed", "failed", "cancelled"] },
+        "input_snapshot": { "$ref": "#/$defs/inputSnapshot" },
+        "business_idempotency_key": { "type": "string", "minLength": 1 },
+        "summary": { "$ref": "#/$defs/runSummary" },
+        "cancellation_requested_at": { "type": "string", "format": "date-time" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "humanAction": {
+      "type": "object",
+      "required": ["action", "actor_id", "acted_at", "payload", "extensions"],
+      "properties": {
+        "action": { "type": "string", "enum": ["approve", "reject", "request_change", "skip_by_policy", "upload_result", "cancel"] },
+        "actor_id": { "type": "string", "minLength": 1 },
+        "acted_at": { "type": "string", "format": "date-time" },
+        "payload": { "type": "array", "items": { "$ref": "#/$defs/namedValue" } },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "nodeRun": {
+      "type": "object",
+      "required": ["id", "workflow_run_id", "node_definition_id", "fanout_index", "status", "attempt_number", "input_snapshot", "observed_input_hash", "current_input_hash", "stale_input", "output", "created_at", "updated_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "workflow_run_id": { "type": "string", "minLength": 1 },
+        "node_definition_id": { "type": "string", "minLength": 1 },
+        "fanout_index": { "type": ["integer", "null"], "minimum": 0 },
+        "parent_node_run_id": { "type": "string", "minLength": 1 },
+        "rerun_of_node_run_id": { "type": "string", "minLength": 1 },
+        "rerun_reason": { "type": "string", "minLength": 1 },
+        "rerun_generation": { "type": "integer", "minimum": 0, "default": 0 },
+        "status": { "type": "string", "enum": ["pending", "ready", "queued", "running", "waiting_callback", "waiting_human", "retry_scheduled", "succeeded", "failed", "skipped", "cancelling", "cancelled"] },
+        "attempt_number": { "type": "integer", "minimum": 1 },
+        "input_snapshot": { "$ref": "#/$defs/inputSnapshot" },
+        "observed_input_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "current_input_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "stale_input": { "type": "boolean" },
+        "stale_disposition": { "type": "string", "enum": ["not_stale", "blocked", "decision_required", "pinned_snapshot_accepted"] },
+        "business_idempotency_key": { "type": "string", "minLength": 1 },
+        "output": { "type": "array", "items": { "$ref": "#/$defs/namedValue" } },
+        "human_task_id": { "type": "string", "minLength": 1 },
+        "human_action": { "$ref": "#/$defs/humanAction" },
+        "error": { "$ref": "#/$defs/errorInfo" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "waiting_human" } }, "required": ["status"] },
+          "then": { "required": ["human_task_id"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "candidateSlot": {
+      "type": "object",
+      "required": ["candidate_index", "business_idempotency_key", "status", "attempt_ids", "asset_version_ids", "extensions"],
+      "properties": {
+        "candidate_index": { "type": "integer", "minimum": 0 },
+        "business_idempotency_key": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["pending", "submitting", "running", "succeeded", "failed", "cancelled"] },
+        "attempt_ids": { "type": "array", "items": { "type": "string" } },
+        "asset_version_ids": { "type": "array", "items": { "type": "string" } },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "succeeded" } }, "required": ["status"] },
+          "then": {
+            "properties": {
+              "attempt_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+              "asset_version_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "taskBlocker": {
+      "type": "object",
+      "required": ["code", "message", "recovery_actions", "extensions"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "recovery_actions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["submit_rights_evidence", "change_intended_use", "refresh_rights", "refresh_routes", "configure_provider", "increase_budget", "reduce_candidates", "approve_budget", "abort"] }
+        },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "generationTask": {
+      "type": "object",
+      "required": ["id", "node_run_id", "project_id", "task_type", "status", "generation_spec_revision_id", "generation_spec_hash", "candidate_count", "candidate_slots", "created_at", "updated_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "node_run_id": { "type": "string", "minLength": 1 },
+        "project_id": { "type": "string", "minLength": 1 },
+        "task_type": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["created", "prefiltering", "prefilter_blocked", "rights_checking", "rights_blocked", "rights_review", "routing", "routing_blocked", "budget_blocked", "budget_review", "ready", "running", "completed", "partially_completed", "failed", "cancelled"] },
+        "generation_spec_revision_id": { "type": "string", "minLength": 1 },
+        "generation_spec_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "candidate_prefilter_snapshot_id": { "type": "string", "minLength": 1 },
+        "candidate_prefilter_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rights_gate_snapshot_id": { "type": "string", "minLength": 1 },
+        "rights_gate_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rights_gate_valid_until": { "type": "string", "format": "date-time" },
+        "intended_use_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "blocker": { "$ref": "#/$defs/taskBlocker" },
+        "human_task_id": { "type": "string", "minLength": 1 },
+        "candidate_count": { "type": "integer", "minimum": 1 },
+        "candidate_slots": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/candidateSlot" } },
+        "regenerates_task_id": { "type": "string", "minLength": 1 },
+        "regeneration_reason": { "type": "string", "minLength": 1 },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": { "enum": ["prefilter_blocked", "rights_checking", "rights_blocked", "rights_review", "routing", "routing_blocked", "budget_blocked", "budget_review", "ready", "running", "completed", "partially_completed"] }
+            },
+            "required": ["status"]
+          },
+          "then": { "required": ["candidate_prefilter_snapshot_id", "candidate_prefilter_snapshot_hash"] }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": { "enum": ["rights_blocked", "rights_review", "routing", "routing_blocked", "budget_blocked", "budget_review", "ready", "running", "completed", "partially_completed"] }
+            },
+            "required": ["status"]
+          },
+          "then": { "required": ["rights_gate_snapshot_id", "rights_gate_snapshot_hash", "rights_gate_valid_until", "intended_use_hash"] }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["prefilter_blocked", "rights_blocked", "routing_blocked", "budget_blocked"] } }, "required": ["status"] },
+          "then": { "required": ["blocker"] }
+        },
+        {
+          "if": { "properties": { "status": { "enum": ["rights_review", "budget_review"] } }, "required": ["status"] },
+          "then": { "required": ["blocker", "human_task_id"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "providerAttempt": {
+      "type": "object",
+      "required": ["id", "generation_task_id", "candidate_index", "attempt_ordinal", "kind", "status", "resolved_execution_plan_id", "provider_request_snapshot_id", "provider_request_snapshot_hash", "rights_gate_snapshot_id", "rights_gate_snapshot_hash", "rights_gate_decision_at_submit", "rights_gate_valid_until", "intended_use_hash", "provider_id", "model_id", "provider_submission_key", "created_at", "updated_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "generation_task_id": { "type": "string", "minLength": 1 },
+        "candidate_index": { "type": "integer", "minimum": 0 },
+        "attempt_ordinal": { "type": "integer", "minimum": 1 },
+        "kind": { "type": "string", "enum": ["initial", "retry", "fallback"] },
+        "previous_attempt_id": { "type": "string", "minLength": 1 },
+        "fallback_reason": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["created", "submitting", "submitted", "running", "output_pending_finalize", "succeeded", "failed", "timed_out", "cancelling", "cancelled", "unknown_remote_state"] },
+        "resolved_execution_plan_id": { "type": "string", "minLength": 1 },
+        "provider_request_snapshot_id": { "type": "string", "minLength": 1 },
+        "provider_request_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rights_gate_snapshot_id": { "type": "string", "minLength": 1 },
+        "rights_gate_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rights_gate_decision_at_submit": { "const": "allowed" },
+        "rights_gate_valid_until": { "type": "string", "format": "date-time" },
+        "intended_use_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "model_id": { "type": "string", "minLength": 1 },
+        "provider_submission_key": { "type": "string", "minLength": 1 },
+        "provider_job_id": { "type": "string", "minLength": 1 },
+        "result_asset_version_ids": { "type": "array", "items": { "type": "string" } },
+        "error": { "$ref": "#/$defs/errorInfo" },
+        "submitted_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "enum": ["retry", "fallback"] } }, "required": ["kind"] },
+          "then": { "required": ["previous_attempt_id"] }
+        },
+        {
+          "if": { "properties": { "kind": { "const": "fallback" } }, "required": ["kind"] },
+          "then": { "required": ["fallback_reason"] }
+        },
+        {
+          "if": { "properties": { "status": { "const": "succeeded" } }, "required": ["status"] },
+          "then": {
+            "required": ["result_asset_version_ids"],
+            "properties": { "result_asset_version_ids": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } } }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "assetVersionRef": {
+      "type": "object",
+      "required": ["id", "asset_id", "source_attempt_id", "candidate_index", "content_hash", "storage_uri", "finalized", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "asset_id": { "type": "string", "minLength": 1 },
+        "source_attempt_id": { "type": "string", "minLength": 1 },
+        "candidate_index": { "type": "integer", "minimum": 0 },
+        "content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "storage_uri": { "type": "string", "pattern": "^(s3|asset)://" },
+        "finalized": { "const": true },
+        "created_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "callbackInboxRecord": {
+      "type": "object",
+      "required": ["id", "provider_id", "delivery_id", "provider_job_id", "signature_verified", "payload_hash", "status", "received_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "delivery_id": { "type": "string", "minLength": 1 },
+        "provider_job_id": { "type": "string", "minLength": 1 },
+        "signature_verified": { "type": "boolean" },
+        "payload_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "status": { "type": "string", "enum": ["received", "duplicate", "processing", "applied", "rejected", "dead_letter"] },
+        "provider_attempt_id": { "type": "string", "minLength": 1 },
+        "failure_reason": { "type": "string" },
+        "received_at": { "type": "string", "format": "date-time" },
+        "processed_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "outboxRecord": {
+      "type": "object",
+      "required": ["id", "aggregate_type", "aggregate_id", "event_type", "payload_hash", "status", "delivery_attempts", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "aggregate_type": { "type": "string", "minLength": 1 },
+        "aggregate_id": { "type": "string", "minLength": 1 },
+        "event_type": { "type": "string", "minLength": 1 },
+        "payload_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "status": { "type": "string", "enum": ["pending", "delivering", "delivered", "dead_letter"] },
+        "delivery_attempts": { "type": "integer", "minimum": 0 },
+        "next_delivery_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "delivered_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "renderInputManifest": {
+      "type": "object",
+      "required": ["id", "release_candidate_id", "timeline_version_id", "input_closure_hash", "render_profile_hash", "input_asset_version_ids", "rights_gate_snapshot_id", "rights_gate_snapshot_hash", "rights_gate_valid_until", "asset_availability_snapshot_hash", "review_decision_ids", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "release_candidate_id": { "type": "string", "minLength": 1 },
+        "timeline_version_id": { "type": "string", "minLength": 1 },
+        "input_closure_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "render_profile_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "input_asset_version_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "rights_gate_snapshot_id": { "type": "string", "minLength": 1 },
+        "rights_gate_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rights_gate_valid_until": { "type": "string", "format": "date-time" },
+        "asset_availability_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "review_decision_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "created_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "releaseManifest": {
+      "type": "object",
+      "required": ["id", "release_candidate_id", "render_input_manifest_id", "export_asset_version_id", "export_content_hash", "release_gate_id", "release_gate_hash", "release_gate_input_closure_hash", "release_gate_status_at_creation", "release_gate_valid_until", "quality_report_id", "rights_gate_snapshot_id", "rights_gate_snapshot_hash", "rights_gate_valid_until", "asset_availability_snapshot_hash", "waiver_set_hash", "publication_target_hash", "manifest_hash", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "release_candidate_id": { "type": "string", "minLength": 1 },
+        "render_input_manifest_id": { "type": "string", "minLength": 1 },
+        "export_asset_version_id": { "type": "string", "minLength": 1 },
+        "export_content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "release_gate_id": { "type": "string", "minLength": 1 },
+        "release_gate_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "release_gate_input_closure_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "release_gate_status_at_creation": { "type": "string", "enum": ["ready", "waived"] },
+        "release_gate_valid_until": { "type": "string", "format": "date-time" },
+        "quality_report_id": { "type": "string", "minLength": 1 },
+        "rights_gate_snapshot_id": { "type": "string", "minLength": 1 },
+        "rights_gate_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rights_gate_valid_until": { "type": "string", "format": "date-time" },
+        "asset_availability_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "waiver_set_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "publication_target_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "manifest_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "additionalProperties": false
+    },
+    "publishAttempt": {
+      "type": "object",
+      "required": ["id", "release_manifest_id", "manifest_hash", "release_gate_id", "release_gate_hash", "release_gate_valid_until", "publication_preflight_result", "publication_preflight_hash", "preflight_policy_revision_id", "asset_availability_snapshot_hash", "rights_gate_snapshot_hash", "waiver_set_hash", "review_decision_set_hash", "preflight_checked_at", "attempt_ordinal", "status", "platform", "account_id", "provider_submission_key", "created_at", "updated_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "release_manifest_id": { "type": "string", "minLength": 1 },
+        "manifest_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "release_gate_id": { "type": "string", "minLength": 1 },
+        "release_gate_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "release_gate_valid_until": { "type": "string", "format": "date-time" },
+        "publication_preflight_result": { "type": "string", "enum": ["passed", "failed"] },
+        "publication_preflight_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "preflight_policy_revision_id": { "type": "string", "minLength": 1 },
+        "asset_availability_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "rights_gate_snapshot_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "waiver_set_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "review_decision_set_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "preflight_checked_at": { "type": "string", "format": "date-time" },
+        "attempt_ordinal": { "type": "integer", "minimum": 1 },
+        "previous_attempt_id": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["created", "submitting", "submitted", "published", "failed", "cancelling", "cancelled", "unknown_remote_state"] },
+        "platform": { "type": "string", "minLength": 1 },
+        "account_id": { "type": "string", "minLength": 1 },
+        "provider_submission_key": { "type": "string", "minLength": 1 },
+        "remote_publication_id": { "type": "string", "minLength": 1 },
+        "error": { "$ref": "#/$defs/errorInfo" },
+        "submitted_at": { "type": "string", "format": "date-time" },
+        "finished_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "enum": ["submitting", "submitted", "published", "cancelling", "cancelled", "unknown_remote_state"] } }, "required": ["status"] },
+          "then": { "properties": { "publication_preflight_result": { "const": "passed" } } }
+        },
+        {
+          "if": { "properties": { "attempt_ordinal": { "minimum": 2 } }, "required": ["attempt_ordinal"] },
+          "then": { "required": ["previous_attempt_id"] }
+        },
+        {
+          "if": { "properties": { "status": { "const": "published" } }, "required": ["status"] },
+          "then": { "required": ["remote_publication_id", "finished_at"] }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "uploadIntent": {
+      "type": "object",
+      "required": ["id", "owner_type", "owner_id", "object_key", "expected_content_type", "expected_size_bytes", "expected_content_hash", "status", "expires_at", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "owner_type": { "type": "string", "enum": ["provider_attempt", "manual_node_run"] },
+        "owner_id": { "type": "string", "minLength": 1 },
+        "object_key": { "type": "string", "minLength": 1 },
+        "expected_content_type": { "type": "string", "minLength": 1 },
+        "expected_size_bytes": { "type": "integer", "minimum": 1 },
+        "expected_content_hash": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "status": { "type": "string", "enum": ["initiated", "uploaded", "finalizing", "finalized", "expired", "aborted"] },
+        "asset_version_id": { "type": "string", "minLength": 1 },
+        "expires_at": { "type": "string", "format": "date-time" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "finalized_at": { "type": "string", "format": "date-time" },
+        "extensions": { "$ref": "#/$defs/extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "finalized" } }, "required": ["status"] },
+          "then": { "required": ["asset_version_id", "finalized_at"] },
+          "else": {
+            "properties": {
+              "asset_version_id": false,
+              "finalized_at": false
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

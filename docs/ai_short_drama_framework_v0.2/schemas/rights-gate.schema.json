@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dramatizer.local/schemas/v0.2/rights-gate.schema.json",
+  "title": "Rights Gate Contract Snapshot",
+  "type": "object",
+  "required": ["rights_gate_snapshots", "human_tasks", "extensions"],
+  "properties": {
+    "rights_gate_snapshots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rightsGateSnapshot" }
+    },
+    "human_tasks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/rightsHumanTask" }
+    },
+    "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "intendedUse": {
+      "type": "object",
+      "required": ["purpose", "channels", "regions", "commercial_use", "derivative_use", "provider_processing", "provider_training_allowed", "provider_retention_days", "valid_from", "valid_until"],
+      "properties": {
+        "purpose": { "type": "string", "enum": ["generation", "quality_analysis", "internal_export", "release", "promotion", "archive"] },
+        "channels": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "regions": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 2 } },
+        "commercial_use": { "type": "boolean" },
+        "derivative_use": { "type": "boolean" },
+        "provider_processing": { "type": "boolean" },
+        "provider_training_allowed": { "type": "boolean" },
+        "provider_retention_days": { "type": "integer", "minimum": 0 },
+        "valid_from": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "valid_until": { "$ref": "common.schema.json#/$defs/UtcTimestamp" }
+      },
+      "additionalProperties": false
+    },
+    "rightsFinding": {
+      "type": "object",
+      "required": ["code", "subject", "status", "severity", "reason", "evidence_refs", "extensions"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "subject": { "$ref": "common.schema.json#/$defs/ExactRef" },
+        "status": { "type": "string", "enum": ["satisfied", "blocked", "unknown", "manual_review"] },
+        "severity": { "type": "string", "enum": ["info", "warning", "error"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "evidence_refs": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/ExactRef" } },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "additionalProperties": false
+    },
+    "rightsGateSnapshot": {
+      "type": "object",
+      "required": ["id", "scope", "subject_id", "provider_id", "input_refs", "rights_record_refs", "consent_refs", "provider_policy_revision", "intended_use", "intended_use_hash", "decision", "findings", "policy_revision_id", "evaluated_by", "evaluated_at", "valid_until", "snapshot_hash", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "scope": { "type": "string", "enum": ["generation", "render", "release"] },
+        "subject_id": { "type": "string", "minLength": 1 },
+        "provider_id": { "type": "string", "minLength": 1 },
+        "input_refs": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/ExactRef" } },
+        "rights_record_refs": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/ExactRef" } },
+        "consent_refs": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/ExactRef" } },
+        "provider_policy_revision": { "$ref": "common.schema.json#/$defs/ExactRef" },
+        "intended_use": { "$ref": "#/$defs/intendedUse" },
+        "intended_use_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "decision": { "type": "string", "enum": ["allowed", "blocked", "manual_review"] },
+        "findings": { "type": "array", "items": { "$ref": "#/$defs/rightsFinding" } },
+        "human_task_id": { "type": "string", "minLength": 1 },
+        "policy_revision_id": { "$ref": "common.schema.json#/$defs/RevisionId" },
+        "evaluated_by": { "$ref": "common.schema.json#/$defs/ActorRef" },
+        "evaluated_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "valid_until": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "snapshot_hash": { "$ref": "common.schema.json#/$defs/ContentHash" },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "scope": { "const": "generation" } }, "required": ["scope"] },
+          "then": { "properties": { "intended_use": { "properties": { "purpose": { "const": "generation" } }, "required": ["purpose"] } } }
+        },
+        {
+          "if": { "properties": { "scope": { "const": "render" } }, "required": ["scope"] },
+          "then": { "properties": { "intended_use": { "properties": { "purpose": { "const": "internal_export" } }, "required": ["purpose"] } } }
+        },
+        {
+          "if": { "properties": { "scope": { "const": "release" } }, "required": ["scope"] },
+          "then": { "properties": { "intended_use": { "properties": { "purpose": { "const": "release" } }, "required": ["purpose"] } } }
+        },
+        {
+          "if": { "properties": { "decision": { "const": "manual_review" } }, "required": ["decision"] },
+          "then": { "required": ["human_task_id"] },
+          "else": { "properties": { "human_task_id": false } }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "rightsHumanTask": {
+      "type": "object",
+      "required": ["id", "rights_gate_snapshot_id", "status", "required_role", "allowed_actions", "form_schema_ref", "claim_timeout_seconds", "sla_at", "hard_deadline_at", "escalation_policy_revision_id", "created_at", "extensions"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "rights_gate_snapshot_id": { "type": "string", "minLength": 1 },
+        "status": { "type": "string", "enum": ["waiting", "claimed", "completed", "cancelled", "deadline_expired"] },
+        "required_role": { "type": "string", "minLength": 1 },
+        "allowed_actions": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["approve_scope", "reject", "request_evidence", "cancel"] }
+        },
+        "form_schema_ref": { "type": "string", "format": "uri" },
+        "claim_timeout_seconds": { "type": "integer", "minimum": 1 },
+        "sla_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "hard_deadline_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "escalation_policy_revision_id": { "type": "string", "minLength": 1 },
+        "action": { "type": "string", "enum": ["approve_scope", "reject", "request_evidence", "cancel"] },
+        "acted_by": { "$ref": "common.schema.json#/$defs/ActorRef" },
+        "acted_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "deadline_expired_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "created_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "completed" } }, "required": ["status"] },
+          "then": { "required": ["action", "acted_by", "acted_at"] },
+          "else": { "properties": { "action": false, "acted_by": false, "acted_at": false } }
+        },
+        {
+          "if": { "properties": { "status": { "const": "deadline_expired" } }, "required": ["status"] },
+          "then": { "required": ["deadline_expired_at"] },
+          "else": { "properties": { "deadline_expired_at": false } }
+        }
+      ],
+      "additionalProperties": false
+    }
+  }
+}

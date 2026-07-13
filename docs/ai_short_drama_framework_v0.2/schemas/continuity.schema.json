@@ -1,0 +1,592 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://dramatizer.local/schemas/v0.2/continuity.schema.json",
+  "title": "ContinuityContractBundle",
+  "description": "Exchange bundle for immutable continuity snapshots, planned transitions, observations, approvals, and explicit inter-shot edges.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "snapshots",
+    "transitions",
+    "detected_observations",
+    "approvals",
+    "edges",
+    "extensions"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.2" },
+    "snapshots": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ContinuitySnapshot" }
+    },
+    "transitions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/StateTransition" }
+    },
+    "detected_observations": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/DetectedObservation" }
+    },
+    "approvals": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ContinuityApproval" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/ContinuityEdge" }
+    },
+    "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "StateFact": {
+      "type": "object",
+      "required": ["subject_ref", "attribute_path", "state"],
+      "properties": {
+        "subject_ref": { "$ref": "common.schema.json#/$defs/ExactRef" },
+        "attribute_path": {
+          "type": "string",
+          "pattern": "^/(?:[^~/]|~0|~1)+(?:/(?:[^~/]|~0|~1)+)*$",
+          "maxLength": 512
+        },
+        "state": { "$ref": "common.schema.json#/$defs/StateValue" },
+        "note": { "type": "string", "maxLength": 1000 }
+      },
+      "additionalProperties": false
+    },
+    "ContinuitySnapshot": {
+      "type": "object",
+      "required": [
+        "snapshot_id",
+        "snapshot_kind",
+        "boundary",
+        "basis",
+        "facts",
+        "created_at",
+        "created_by",
+        "extensions"
+      ],
+      "properties": {
+        "snapshot_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "snapshot_kind": {
+          "type": "string",
+          "enum": ["continuity_seed", "planned_start", "planned_end", "approved_end"]
+        },
+        "shot_plan_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "boundary": {
+          "type": "object",
+          "required": ["position", "offset_ms"],
+          "properties": {
+            "position": { "type": "string", "enum": ["start", "end"] },
+            "offset_ms": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": false
+        },
+        "basis": {
+          "type": "object",
+          "required": ["basis_type", "source_refs"],
+          "properties": {
+            "basis_type": {
+              "type": "string",
+              "enum": ["narrative_revision", "director_plan", "continuity_approval", "authorized_import"]
+            },
+            "source_refs": {
+              "type": "array",
+              "items": { "$ref": "common.schema.json#/$defs/ExactRef" },
+              "minItems": 1,
+              "uniqueItems": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "facts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/StateFact" },
+          "minItems": 1
+        },
+        "created_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "created_by": { "$ref": "common.schema.json#/$defs/ActorRef" },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "snapshot_kind": { "const": "continuity_seed" } },
+            "required": ["snapshot_kind"]
+          },
+          "then": {
+            "properties": {
+              "shot_plan_revision_ref": false,
+              "boundary": {
+                "type": "object",
+                "properties": {
+                  "position": { "const": "start" },
+                  "offset_ms": { "const": 0 }
+                }
+              },
+              "basis": {
+                "type": "object",
+                "properties": {
+                  "basis_type": { "enum": ["narrative_revision", "authorized_import"] }
+                }
+              }
+            }
+          },
+          "else": {
+            "properties": {
+              "shot_plan_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" }
+            },
+            "required": ["shot_plan_revision_ref"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "snapshot_kind": { "const": "planned_start" } },
+            "required": ["snapshot_kind"]
+          },
+          "then": {
+            "properties": {
+              "boundary": {
+                "type": "object",
+                "properties": {
+                  "position": { "const": "start" },
+                  "offset_ms": { "const": 0 }
+                }
+              },
+              "basis": {
+                "type": "object",
+                "properties": { "basis_type": { "const": "director_plan" } }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "snapshot_kind": { "const": "planned_end" } },
+            "required": ["snapshot_kind"]
+          },
+          "then": {
+            "properties": {
+              "boundary": {
+                "type": "object",
+                "properties": {
+                  "position": { "const": "end" },
+                  "offset_ms": { "type": "integer", "minimum": 1 }
+                }
+              },
+              "basis": {
+                "type": "object",
+                "properties": { "basis_type": { "const": "director_plan" } }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "snapshot_kind": { "const": "approved_end" } },
+            "required": ["snapshot_kind"]
+          },
+          "then": {
+            "properties": {
+              "boundary": {
+                "type": "object",
+                "properties": {
+                  "position": { "const": "end" },
+                  "offset_ms": { "type": "integer", "minimum": 1 }
+                }
+              },
+              "basis": {
+                "type": "object",
+                "properties": { "basis_type": { "const": "continuity_approval" } }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": { "basis_type": { "const": "narrative_revision" } },
+                "required": ["basis_type"]
+              }
+            },
+            "required": ["basis"]
+          },
+          "then": {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": {
+                  "source_refs": {
+                    "type": "array",
+                    "items": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": { "basis_type": { "const": "director_plan" } },
+                "required": ["basis_type"]
+              }
+            },
+            "required": ["basis"]
+          },
+          "then": {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": {
+                  "source_refs": {
+                    "type": "array",
+                    "items": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": { "basis_type": { "const": "continuity_approval" } },
+                "required": ["basis_type"]
+              }
+            },
+            "required": ["basis"]
+          },
+          "then": {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": {
+                  "source_refs": {
+                    "type": "array",
+                    "items": { "$ref": "common.schema.json#/$defs/ImmutableRef" },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": { "basis_type": { "const": "authorized_import" } },
+                "required": ["basis_type"]
+              }
+            },
+            "required": ["basis"]
+          },
+          "then": {
+            "properties": {
+              "basis": {
+                "type": "object",
+                "properties": {
+                  "source_refs": {
+                    "type": "array",
+                    "items": { "$ref": "common.schema.json#/$defs/ImmutableRef" },
+                    "minItems": 1,
+                    "uniqueItems": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "TransitionAction": {
+      "type": "object",
+      "required": [
+        "action_id",
+        "story_event_id",
+        "subject_ref",
+        "attribute_path",
+        "operation",
+        "expected_before",
+        "planned_after",
+        "time_range"
+      ],
+      "properties": {
+        "action_id": { "$ref": "common.schema.json#/$defs/LogicalId" },
+        "story_event_id": { "$ref": "common.schema.json#/$defs/LogicalId" },
+        "subject_ref": { "$ref": "common.schema.json#/$defs/ExactRef" },
+        "attribute_path": {
+          "type": "string",
+          "pattern": "^/(?:[^~/]|~0|~1)+(?:/(?:[^~/]|~0|~1)+)*$",
+          "maxLength": 512
+        },
+        "operation": {
+          "type": "string",
+          "enum": ["set", "move", "acquire", "release", "appear", "disappear", "transform", "assert_unchanged"]
+        },
+        "expected_before": { "$ref": "common.schema.json#/$defs/StateValue" },
+        "planned_after": { "$ref": "common.schema.json#/$defs/StateValue" },
+        "time_range": { "$ref": "common.schema.json#/$defs/TimeRangeMs" }
+      },
+      "additionalProperties": false
+    },
+    "StateTransition": {
+      "type": "object",
+      "required": [
+        "transition_id",
+        "shot_plan_revision_ref",
+        "from_snapshot_id",
+        "to_snapshot_id",
+        "actions",
+        "created_at",
+        "extensions"
+      ],
+      "properties": {
+        "transition_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "shot_plan_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "from_snapshot_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "to_snapshot_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "actions": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TransitionAction" },
+          "minItems": 1
+        },
+        "created_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "additionalProperties": false
+    },
+    "ObservedFact": {
+      "type": "object",
+      "required": [
+        "subject_ref",
+        "attribute_path",
+        "observed_state",
+        "confidence",
+        "time_range",
+        "evidence_refs"
+      ],
+      "properties": {
+        "subject_ref": { "$ref": "common.schema.json#/$defs/ExactRef" },
+        "attribute_path": {
+          "type": "string",
+          "pattern": "^/(?:[^~/]|~0|~1)+(?:/(?:[^~/]|~0|~1)+)*$",
+          "maxLength": 512
+        },
+        "observed_state": { "$ref": "common.schema.json#/$defs/StateValue" },
+        "confidence": { "$ref": "common.schema.json#/$defs/Confidence" },
+        "time_range": { "$ref": "common.schema.json#/$defs/TimeRangeMs" },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "DetectedObservation": {
+      "type": "object",
+      "required": [
+        "observation_id",
+        "shot_plan_revision_ref",
+        "generation_attempt_ref",
+        "candidate_asset_version_ref",
+        "detector",
+        "observation_scope",
+        "observed_facts",
+        "created_at",
+        "extensions"
+      ],
+      "properties": {
+        "observation_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "shot_plan_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "generation_attempt_ref": { "$ref": "common.schema.json#/$defs/ImmutableRef" },
+        "candidate_asset_version_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "detector": {
+          "type": "object",
+          "required": ["detector_type", "implementation", "implementation_version", "config_hash"],
+          "properties": {
+            "detector_type": {
+              "type": "string",
+              "enum": ["media_probe", "video_understanding", "computer_vision", "human_annotation"]
+            },
+            "implementation": { "$ref": "common.schema.json#/$defs/LogicalId" },
+            "implementation_version": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "config_hash": { "$ref": "common.schema.json#/$defs/ContentHash" }
+          },
+          "additionalProperties": false
+        },
+        "observation_scope": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^/", "maxLength": 512 },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "observed_facts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ObservedFact" }
+        },
+        "created_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "additionalProperties": false
+    },
+    "ContinuityApproval": {
+      "type": "object",
+      "required": [
+        "approval_id",
+        "shot_plan_revision_ref",
+        "decision",
+        "input_snapshot_ids",
+        "input_observation_ids",
+        "decided_at",
+        "decided_by",
+        "authority",
+        "reason",
+        "extensions"
+      ],
+      "properties": {
+        "approval_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "shot_plan_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "decision": {
+          "type": "string",
+          "enum": ["accept_planned", "accept_observation", "manual_override", "reject"]
+        },
+        "input_snapshot_ids": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "input_observation_ids": {
+          "type": "array",
+          "items": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+          "uniqueItems": true
+        },
+        "approved_snapshot_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "decided_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "decided_by": { "$ref": "common.schema.json#/$defs/ActorRef" },
+        "authority": {
+          "type": "string",
+          "enum": ["human", "deterministic_policy", "audited_batch_policy"]
+        },
+        "policy_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "decision": { "const": "reject" } },
+            "required": ["decision"]
+          },
+          "then": { "properties": { "approved_snapshot_id": false } },
+          "else": {
+            "properties": {
+              "approved_snapshot_id": { "$ref": "common.schema.json#/$defs/ImmutableId" }
+            },
+            "required": ["approved_snapshot_id"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "authority": { "enum": ["deterministic_policy", "audited_batch_policy"] } },
+            "required": ["authority"]
+          },
+          "then": {
+            "properties": {
+              "policy_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" }
+            },
+            "required": ["policy_ref"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "decision": { "const": "accept_observation" } },
+            "required": ["decision"]
+          },
+          "then": {
+            "properties": {
+              "input_observation_ids": {
+                "type": "array",
+                "items": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+                "minItems": 1,
+                "uniqueItems": true
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "decision": { "const": "manual_override" } },
+            "required": ["decision"]
+          },
+          "then": {
+            "properties": { "authority": { "const": "human" } }
+          }
+        }
+      ],
+      "additionalProperties": false
+    },
+    "ContinuityEdge": {
+      "type": "object",
+      "required": [
+        "edge_id",
+        "track_id",
+        "ordinal",
+        "predecessor",
+        "successor",
+        "relation",
+        "comparison_policy_ref",
+        "created_at",
+        "extensions"
+      ],
+      "properties": {
+        "edge_id": { "$ref": "common.schema.json#/$defs/ImmutableId" },
+        "track_id": { "$ref": "common.schema.json#/$defs/LogicalId" },
+        "ordinal": { "type": "integer", "minimum": 0 },
+        "predecessor": {
+          "type": "object",
+          "required": ["snapshot_id"],
+          "properties": {
+            "shot_plan_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+            "snapshot_id": { "$ref": "common.schema.json#/$defs/ImmutableId" }
+          },
+          "additionalProperties": false
+        },
+        "successor": {
+          "type": "object",
+          "required": ["shot_plan_revision_ref", "planned_start_snapshot_id"],
+          "properties": {
+            "shot_plan_revision_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+            "planned_start_snapshot_id": { "$ref": "common.schema.json#/$defs/ImmutableId" }
+          },
+          "additionalProperties": false
+        },
+        "relation": {
+          "type": "string",
+          "enum": ["continuous", "cutaway", "time_jump", "location_jump", "parallel_action", "declared_discontinuity"]
+        },
+        "comparison_policy_ref": { "$ref": "common.schema.json#/$defs/VersionedRef" },
+        "created_at": { "$ref": "common.schema.json#/$defs/UtcTimestamp" },
+        "extensions": { "$ref": "common.schema.json#/$defs/Extensions" }
+      },
+      "additionalProperties": false
+    }
+  }
+}
