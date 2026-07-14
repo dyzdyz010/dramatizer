@@ -20,3 +20,5 @@
 ## 当前状态
 
 v0.2 已完成 Codex/GPT 与 Claude 的跨模型架构审计，当前没有未解决的 P0/P1 设计缺陷。真实 Provider、对象存储、数据库事务约束和发布平台行为仍须按路线图通过 Spike 与契约测试验证。
+
+2026-07-14 起正在进行面向本机单用户版本的实施设计对齐。当前进度与跨电脑续接入口见 [`STATUS.md`](STATUS.md)，已经确认的增量决策见 [`docs/implementation-alignment.md`](docs/implementation-alignment.md)。v0.2 保持冻结，未在对齐过程中原地改写。
