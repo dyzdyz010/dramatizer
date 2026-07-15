@@ -80,7 +80,7 @@ function Write-RealSmokeSummary {
         [switch]$Reused
     )
 
-    $costValue = if ([int]$Summary.actual_cost_entries -eq 0) {
+    $costValue = if ([string]::IsNullOrWhiteSpace([string]$Summary.actual_cost_micros)) {
         "unavailable"
     } else {
         $Summary.actual_cost_micros
