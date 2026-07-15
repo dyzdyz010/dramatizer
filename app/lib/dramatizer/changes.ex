@@ -318,10 +318,23 @@ defmodule Dramatizer.Changes do
             selection ->
               insert_neighbor_stale(project_id, changed_slot, selection)
 
+              neighbor_ids = selected_neighbor_ids(slot, ordered_slots, selections)
+
+              evaluation_key =
+                "neighbor:" <>
+                  CanonicalJSON.hash(%{
+                    "changed_slot" => changed_slot,
+                    "target_slot" => slot,
+                    "target_asset_id" => selection.asset_version_id,
+                    "selected_neighbor_ids" => neighbor_ids
+                  })
+
               {:ok, job} =
                 %{
                   "asset_version_id" => selection.asset_version_id,
-                  "generation_spec_id" => selection.generation_spec_id
+                  "generation_spec_id" => selection.generation_spec_id,
+                  "selected_neighbor_ids" => neighbor_ids,
+                  "evaluation_key" => evaluation_key
                 }
                 |> SemanticQCJob.new(
                   schedule_in: 1,
@@ -336,6 +349,28 @@ defmodule Dramatizer.Changes do
       {:ok, jobs}
     else
       nil -> {:error, :changed_slot_not_found}
+    end
+  end
+
+  defp selected_neighbor_ids(slot, ordered_slots, selections) do
+    index = Enum.find_index(ordered_slots, &(&1 == slot))
+
+    %{}
+    |> maybe_put_neighbor("previous", Enum.at(ordered_slots, index - 1), index > 0, selections)
+    |> maybe_put_neighbor(
+      "next",
+      Enum.at(ordered_slots, index + 1),
+      index < length(ordered_slots) - 1,
+      selections
+    )
+  end
+
+  defp maybe_put_neighbor(neighbors, _position, _slot, false, _selections), do: neighbors
+
+  defp maybe_put_neighbor(neighbors, position, slot, true, selections) do
+    case Map.get(selections, slot) do
+      %SelectionDecision{id: id} -> Map.put(neighbors, position, id)
+      nil -> neighbors
     end
   end
 

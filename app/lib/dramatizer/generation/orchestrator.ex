@@ -6,8 +6,16 @@ defmodule Dramatizer.Generation.Orchestrator do
   alias Dramatizer.Assets
   alias Dramatizer.Costs
   alias Dramatizer.Generation
-  alias Dramatizer.Generation.{Attempt, ConfigResolver, GenerationSpec, ImagePromptCompiler}
-  alias Dramatizer.Generation.Adapters.{Fake, OpenAIImages}
+
+  alias Dramatizer.Generation.{
+    Attempt,
+    ConfigResolver,
+    GenerationSpec,
+    ImagePromptCompiler,
+    ImagePromptProposal
+  }
+
+  alias Dramatizer.Generation.Adapters.{Fake, OpenAIImages, OpenAIResponses}
   alias Dramatizer.Projects.Project
   alias Dramatizer.Quality
   alias Dramatizer.Repo
@@ -57,11 +65,17 @@ defmodule Dramatizer.Generation.Orchestrator do
     config = ConfigResolver.resolve(task_type, project, task_override)
 
     with {:ok, reference_assets} <- resolve_reference_assets(spec, opts),
+         {:ok, proposal} <-
+           ImagePromptProposal.propose(project, task_type, spec.payload,
+             provider_mode: :openai,
+             submitter: Keyword.get(opts, :prompt_submitter, &OpenAIResponses.submit/2),
+             task_override: Keyword.get(opts, :prompt_task_override, %{})
+           ),
          {:ok, compilation} <-
            ImagePromptCompiler.compile(task_type, spec.payload,
              revision_ids: revision_ids(spec),
              reference_asset_ids: Enum.map(reference_assets, & &1.id),
-             user_instruction: spec.payload["prompt"] || ""
+             user_instruction: proposal.provider_prompt
            ) do
       reference_ids = Enum.map(reference_assets, & &1.id)
       operation = if reference_ids == [], do: "generate", else: "edit"
@@ -90,6 +104,9 @@ defmodule Dramatizer.Generation.Orchestrator do
              "chinese_authority" => compilation.chinese_authority,
              "chinese_authority_hash" => compilation.chinese_authority_hash,
              "provider_prompt_hash" => compilation.provider_prompt_hash,
+             "proposal_request_snapshot_id" => proposal.request_snapshot.id,
+             "proposal_attempt_id" => proposal.attempt.id,
+             "proposal_prompt_hash" => proposal.provider_prompt_hash,
              "links" => compilation.links
            }
          }
@@ -129,15 +146,18 @@ defmodule Dramatizer.Generation.Orchestrator do
   end
 
   defp dispatch(spec, project, snapshot, %Attempt{status: :prepared} = attempt, context) do
-    with {:ok, submitted} <- Generation.transition_attempt(attempt, :submitted) do
+    with {:ok, context} <- reserve_provider_cost(project, snapshot, attempt, context),
+         {:ok, submitted} <- Generation.transition_attempt(attempt, :submitted) do
       case submit(snapshot, submitted, context) do
         {:ok, provider_result} ->
           complete_success(spec, project, snapshot, submitted, provider_result, context)
 
         {:error, :provider_timeout, metadata} ->
+          settle_provider_cost(context, nil, %{status: "provider_timeout"})
           complete_timeout(project, submitted, metadata, context.provider)
 
         {:error, code, metadata} ->
+          settle_provider_cost(context, nil, %{status: to_string(code)})
           complete_error(submitted, :failed, code, metadata)
       end
     end
@@ -188,7 +208,11 @@ defmodule Dramatizer.Generation.Orchestrator do
       [%{bytes: bytes, mime_type: mime_type}] ->
         cost_micros = Map.get(provider_result, :cost_micros)
 
-        with :ok <- maybe_record_openai_cost(project, attempt, cost_micros),
+        with :ok <-
+               settle_provider_cost(context, cost_micros, %{
+                 provider: "openai",
+                 request_id: Map.get(provider_result, :request_id)
+               }),
              qc_opts <- quality_options(context),
              {:ok, completed} <-
                persist_image(
@@ -333,11 +357,34 @@ defmodule Dramatizer.Generation.Orchestrator do
     end
   end
 
-  defp maybe_record_openai_cost(_project, _attempt, nil), do: :ok
+  defp reserve_provider_cost(_project, _snapshot, _attempt, %{provider: :fake} = context),
+    do: {:ok, context}
 
-  defp maybe_record_openai_cost(project, attempt, amount)
-       when is_integer(amount) and amount >= 0 do
-    case record_cost(project, attempt, amount, amount, "openai") do
+  defp reserve_provider_cost(project, snapshot, attempt, %{provider: :openai} = context) do
+    estimate = Map.get(snapshot.params, "estimated_cost_micros", 0)
+
+    with true <- is_integer(estimate) and estimate >= 0,
+         {:ok, _entry} <-
+           Costs.record_estimate(
+             project,
+             estimate,
+             "estimate:#{attempt.id}",
+             %{provider: "openai", task_type: snapshot.task_type},
+             attempt.id
+           ),
+         {:ok, reservation} <-
+           Costs.reserve(project, estimate, "reservation:#{attempt.id}", attempt.id) do
+      {:ok, Map.put(context, :cost_reservation, reservation)}
+    else
+      false -> {:error, :invalid_cost_estimate}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp settle_provider_cost(%{provider: :fake}, _actual, _metadata), do: :ok
+
+  defp settle_provider_cost(%{cost_reservation: reservation}, actual, metadata) do
+    case Costs.settle(reservation, actual, metadata) do
       {:ok, _entry} -> :ok
       {:error, reason} -> {:error, reason}
     end

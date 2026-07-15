@@ -5,6 +5,8 @@ defmodule Dramatizer.Analysis.DAGTest do
 
   alias Dramatizer.Analysis
   alias Dramatizer.Analysis.{AnalysisSnapshot, DAG}
+  alias Dramatizer.Costs
+  alias Dramatizer.Costs.CostEntry
   alias Dramatizer.Generation.Attempt
   alias Dramatizer.Projects
   alias Dramatizer.Repo
@@ -135,6 +137,44 @@ defmodule Dramatizer.Analysis.DAGTest do
     assert failed.status == :failed
     assert failed.error_code == "structured_validation_failed"
     assert Repo.aggregate(Attempt, :count) == 3
+  end
+
+  test "live analysis reserves before provider submission and settles unknown actual", context do
+    assert {:ok, _budget} = Costs.set_budget(context.project, 100)
+    assert {:ok, _run, nodes} = DAG.start(context.project, [context.source.id])
+    node = Enum.find(nodes, &(&1.node_key == "people_relations"))
+
+    submitter = fn _snapshot, _attempt ->
+      assert Costs.get_budget(context.project).reserved_micros == 40
+
+      {:ok,
+       %{
+         output: %{
+           "items" => [
+             item(
+               "person:live",
+               "source_grounded",
+               [locator(context.source.id)]
+             )
+           ]
+         },
+         external_request_id: "analysis-live-1",
+         request_id: "req-analysis-live-1",
+         usage: %{"total_tokens" => 20}
+       }}
+    end
+
+    assert {:ok, completed} =
+             Analysis.run_node_live(node, context.project,
+               submitter: submitter,
+               task_override: %{params: %{"estimated_cost_micros" => 40}}
+             )
+
+    assert completed.status == :succeeded
+    assert Costs.get_budget(context.project).reserved_micros == 0
+    entries = Repo.all(from entry in CostEntry, where: entry.project_id == ^context.project.id)
+    assert Enum.map(entries, & &1.entry_type) |> Enum.sort() == [:actual, :estimate, :reservation]
+    assert Enum.find(entries, &(&1.entry_type == :actual)).amount_micros == nil
   end
 
   defp complete_remaining_nodes(run_id, except_id) do

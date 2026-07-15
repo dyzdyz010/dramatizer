@@ -5,6 +5,7 @@ defmodule Dramatizer.Quality do
 
   alias Dramatizer.Assets.AssetVersion
   alias Dramatizer.CanonicalJSON
+  alias Dramatizer.Changes
   alias Dramatizer.Generation.GenerationSpec
   alias Dramatizer.Projects.Project
   alias Dramatizer.Quality.{QualityReport, SelectionDecision, SemanticQC, TechnicalQC}
@@ -116,6 +117,8 @@ defmodule Dramatizer.Quality do
       if existing && existing.asset_version_id == asset.id do
         existing
       else
+        changed_selection? = not is_nil(existing)
+
         if existing do
           existing
           |> SelectionDecision.supersede_changeset()
@@ -125,17 +128,37 @@ defmodule Dramatizer.Quality do
         semantic = latest_report(asset.id, :semantic)
         accepted_failure = not is_nil(semantic) and semantic.status != :pass
 
-        %SelectionDecision{}
-        |> SelectionDecision.create_changeset(%{
-          project_id: project.id,
-          slot_key: slot_key,
-          generation_spec_id: spec.id,
-          asset_version_id: asset.id,
-          accepted_semantic_failure: accepted_failure,
-          note: Keyword.get(opts, :note),
-          decided_at: DateTime.utc_now()
-        })
-        |> Repo.insert!()
+        decision =
+          %SelectionDecision{}
+          |> SelectionDecision.create_changeset(%{
+            project_id: project.id,
+            slot_key: slot_key,
+            generation_spec_id: spec.id,
+            asset_version_id: asset.id,
+            accepted_semantic_failure: accepted_failure,
+            note: Keyword.get(opts, :note),
+            decided_at: DateTime.utc_now()
+          })
+          |> Repo.insert!()
+
+        if changed_selection? and String.starts_with?(slot_key, "shot:") do
+          ordered_slots =
+            Repo.all(
+              from selection in SelectionDecision,
+                where:
+                  selection.project_id == ^project.id and selection.status == :active and
+                    like(selection.slot_key, "shot:%"),
+                order_by: [asc: selection.slot_key],
+                select: selection.slot_key
+            )
+
+          case Changes.schedule_neighbor_qc(project, ordered_slots, slot_key) do
+            {:ok, _jobs} -> :ok
+            {:error, reason} -> Repo.rollback(reason)
+          end
+        end
+
+        decision
       end
     end)
     |> case do

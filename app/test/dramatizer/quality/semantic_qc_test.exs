@@ -2,10 +2,13 @@ defmodule Dramatizer.Quality.SemanticQCTest do
   use Dramatizer.DataCase, async: false
 
   alias Dramatizer.Assets
+  alias Dramatizer.Costs
+  alias Dramatizer.Costs.CostEntry
   alias Dramatizer.Generation
   alias Dramatizer.Projects
   alias Dramatizer.Quality
   alias Dramatizer.Quality.{SelectionDecision, SemanticQC, TechnicalQC}
+  alias Dramatizer.Repo
 
   @dimensions ~w(identity_variant wardrobe location lighting key_props must_forbid composition camera action expression style artifacts)
 
@@ -154,6 +157,40 @@ defmodule Dramatizer.Quality.SemanticQCTest do
 
     assert {:ok, _decision} =
              Quality.select(context.project, "slot-unavailable", context.spec, context.candidate)
+  end
+
+  test "semantic QC reserves before evaluator submission and settles unknown actual", context do
+    assert {:ok, _budget} = Costs.set_budget(context.project, 100)
+
+    evaluator = fn _snapshot, _attempt ->
+      assert Costs.get_budget(context.project).reserved_micros == 30
+
+      {:ok,
+       %{
+         output: semantic_output("pass"),
+         external_request_id: "semantic-budget-1",
+         request_id: "req-semantic-budget-1",
+         usage: %{"total_tokens" => 15}
+       }}
+    end
+
+    assert {:ok, report} =
+             SemanticQC.run(context.candidate, context.spec, context.project,
+               evaluator: evaluator,
+               evaluation_key: "budget",
+               task_override: %{params: %{"estimated_cost_micros" => 30}}
+             )
+
+    assert report.status == :pass
+    assert Costs.get_budget(context.project).reserved_micros == 0
+
+    entries =
+      Repo.all(
+        Ecto.Query.from(entry in CostEntry, where: entry.project_id == ^context.project.id)
+      )
+
+    assert Enum.count(entries, &(&1.entry_type == :actual)) == 1
+    assert Enum.find(entries, &(&1.entry_type == :actual)).amount_micros == nil
   end
 
   defp semantic_output(status) do

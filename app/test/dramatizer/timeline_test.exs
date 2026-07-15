@@ -118,6 +118,52 @@ defmodule Dramatizer.TimelineTest do
     assert frozen["source_event_id"] == "D001"
   end
 
+  test "exploratory selections remain placeholders in a formal timeline", context do
+    {:ok, generated} =
+      Dramatizer.Media.Worker.run(:generate_fake_image, %{
+        "width" => 540,
+        "height" => 960,
+        "seed" => "exploratory"
+      })
+
+    {:ok, intent} =
+      Dramatizer.Assets.create_upload_intent(context.project, %{
+        purpose: "exploratory-shot",
+        expected_mime: "image/png",
+        idempotency_key: "timeline-exploratory"
+      })
+
+    {:ok, staged} =
+      Dramatizer.Assets.stage_bytes(intent, Base.decode64!(generated["png_base64"]))
+
+    {:ok, spec} =
+      Dramatizer.Generation.create_spec(context.project, %{
+        kind: "shot_keyframe",
+        formal: false,
+        payload: %{"shot_id" => "S002", "aspect_width" => 9, "aspect_height" => 16}
+      })
+
+    {:ok, asset} =
+      Dramatizer.Assets.finalize(staged, %{
+        "origin" => "fixture",
+        "formal" => false,
+        "generation_spec_id" => spec.id
+      })
+
+    {:ok, _technical} = Dramatizer.Quality.run_technical(asset, spec)
+    {:ok, selection} = Dramatizer.Quality.select(context.project, "shot:S002", spec, asset)
+
+    assert {:ok, timeline} =
+             Timeline.create(context.project, context.narrative, context.shot_plan, %{
+               "S002" => selection
+             })
+
+    exploratory_clip = Enum.find(Timeline.list_clips(timeline), &(&1.shot_id == "S002"))
+    assert exploratory_clip.placeholder
+    assert exploratory_clip.asset_version_id == nil
+    assert exploratory_clip.selection_decision_id == nil
+  end
+
   test "unresolved stale blocks formal freeze but preview remains available; pin-old unblocks",
        context do
     assert {:ok, _jobs} =

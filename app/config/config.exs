@@ -38,14 +38,21 @@ text_model = %{
   adapter: "openai_responses",
   credential_ref: "OPENAI_API_KEY",
   model: "gpt-5.6-terra",
-  params: %{"reasoning" => %{"effort" => "medium"}}
+  params: %{
+    "reasoning" => %{"effort" => "medium"},
+    "estimated_cost_micros" => 50_000
+  }
 }
 
 image_model = %{
   adapter: "openai_images",
   credential_ref: "OPENAI_API_KEY",
   model: "gpt-image-2",
-  params: %{"quality" => "medium", "size" => "1024x1536"}
+  params: %{
+    "quality" => "medium",
+    "size" => "768x1360",
+    "estimated_cost_micros" => 200_000
+  }
 }
 
 reference_image_model = put_in(image_model, [:params, "candidate_count"], 4)

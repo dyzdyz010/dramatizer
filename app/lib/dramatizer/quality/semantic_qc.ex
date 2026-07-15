@@ -4,6 +4,7 @@ defmodule Dramatizer.Quality.SemanticQC do
   alias Dramatizer.Assets
   alias Dramatizer.Assets.AssetVersion
   alias Dramatizer.CanonicalJSON
+  alias Dramatizer.Costs
   alias Dramatizer.Generation
   alias Dramatizer.Generation.Adapters.OpenAIResponses
   alias Dramatizer.Generation.GenerationSpec
@@ -51,12 +52,26 @@ defmodule Dramatizer.Quality.SemanticQC do
                "quality_schema_version" => "image-semantic-qc-v1"
              }
            }),
+         {:ok, reservation} <-
+           Costs.reserve_provider_attempt(project, snapshot, attempt, :openai),
          {:ok, submitted} <- Generation.transition_attempt(attempt, :submitted) do
       case evaluator.(snapshot, submitted) do
         {:ok, result} ->
-          persist_evaluation(asset, target_spec, snapshot, submitted, result, evaluation_key)
+          with :ok <-
+                 Costs.settle_provider_attempt(
+                   reservation,
+                   Map.get(result, :cost_micros),
+                   %{provider: snapshot.adapter, request_id: Map.get(result, :request_id)}
+                 ) do
+            persist_evaluation(asset, target_spec, snapshot, submitted, result, evaluation_key)
+          end
 
         {:error, code, metadata} ->
+          Costs.settle_provider_attempt(reservation, nil, %{
+            provider: snapshot.adapter,
+            status: to_string(code)
+          })
+
           persist_evaluator_failure(
             asset,
             target_spec,

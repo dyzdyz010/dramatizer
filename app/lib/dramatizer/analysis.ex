@@ -5,6 +5,7 @@ defmodule Dramatizer.Analysis do
 
   alias Dramatizer.Analysis.{Schemas, Validator}
   alias Dramatizer.CanonicalJSON
+  alias Dramatizer.Costs
   alias Dramatizer.Generation
   alias Dramatizer.Generation.Adapters.OpenAIResponses
   alias Dramatizer.Projects
@@ -25,17 +26,18 @@ defmodule Dramatizer.Analysis do
       end
     end
 
-    execute(node, project, provider, :fixture)
+    execute(node, project, provider, :fixture, [])
   end
 
-  def run_node_live(%NodeRun{} = node, %Project{} = project) do
-    provider = fn snapshot, attempt, _index -> OpenAIResponses.submit(snapshot, attempt) end
-    execute(node, project, provider, :resolved)
+  def run_node_live(%NodeRun{} = node, %Project{} = project, opts \\ []) do
+    submitter = Keyword.get(opts, :submitter, &OpenAIResponses.submit/2)
+    provider = fn snapshot, attempt, _index -> submitter.(snapshot, attempt) end
+    execute(node, project, provider, :resolved, opts)
   end
 
-  defp execute(node, project, provider, mode) do
+  defp execute(node, project, provider, mode, opts) do
     with {:ok, running} <- Workflow.transition_node(node, :running) do
-      attempt_loop(running, project, provider, mode, 0, [], [], nil)
+      attempt_loop(running, project, provider, mode, opts, 0, [], [], nil)
     end
   end
 
@@ -44,6 +46,7 @@ defmodule Dramatizer.Analysis do
          project,
          provider,
          mode,
+         opts,
          index,
          snapshot_ids,
          previous_errors,
@@ -73,7 +76,7 @@ defmodule Dramatizer.Analysis do
     override =
       if mode == :fixture,
         do: %{adapter: "fixture", credential_ref: "none", model: "fixture-analysis-v1"},
-        else: %{}
+        else: Keyword.get(opts, :task_override, %{})
 
     with {:ok, spec} <-
            Generation.create_spec(project, %{kind: node.node_key, payload: spec_payload}),
@@ -93,23 +96,40 @@ defmodule Dramatizer.Analysis do
                "schema_hash" => CanonicalJSON.hash(schema)
              }
            }),
+         {:ok, reservation} <- reserve_provider_cost(project, snapshot, attempt, mode),
          {:ok, submitted} <- Generation.transition_attempt(attempt, :submitted) do
       current_snapshot_ids = snapshot_ids ++ [snapshot.id]
 
       case provider.(snapshot, submitted, index) do
         {:ok, provider_result} ->
-          validate_provider_result(
-            node,
-            project,
-            provider,
-            mode,
-            index,
-            current_snapshot_ids,
-            submitted,
-            provider_result
-          )
+          with :ok <-
+                 Costs.settle_provider_attempt(
+                   reservation,
+                   Map.get(provider_result, :cost_micros),
+                   %{
+                     provider: snapshot.adapter,
+                     request_id: Map.get(provider_result, :request_id)
+                   }
+                 ) do
+            validate_provider_result(
+              node,
+              project,
+              provider,
+              mode,
+              opts,
+              index,
+              current_snapshot_ids,
+              submitted,
+              provider_result
+            )
+          end
 
         {:error, code, metadata} ->
+          Costs.settle_provider_attempt(reservation, nil, %{
+            provider: snapshot.adapter,
+            status: to_string(code)
+          })
+
           Generation.transition_attempt(submitted, :failed, %{
             error_code: to_string(code),
             error_message: to_string(code),
@@ -126,6 +146,7 @@ defmodule Dramatizer.Analysis do
          project,
          provider,
          mode,
+         opts,
          index,
          snapshot_ids,
          attempt,
@@ -170,12 +191,27 @@ defmodule Dramatizer.Analysis do
           })
 
         if index + 1 < @max_attempts do
-          attempt_loop(node, project, provider, mode, index + 1, snapshot_ids, errors, output)
+          attempt_loop(
+            node,
+            project,
+            provider,
+            mode,
+            opts,
+            index + 1,
+            snapshot_ids,
+            errors,
+            output
+          )
         else
           fail_node(node, :structured_validation_failed, snapshot_ids, errors)
         end
     end
   end
+
+  defp reserve_provider_cost(_project, _snapshot, _attempt, :fixture), do: {:ok, nil}
+
+  defp reserve_provider_cost(project, snapshot, attempt, :resolved),
+    do: Costs.reserve_provider_attempt(project, snapshot, attempt, :openai)
 
   defp fail_node(node, code, snapshot_ids, errors) do
     {:ok, failed} =

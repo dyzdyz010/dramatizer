@@ -272,7 +272,7 @@ defmodule Dramatizer.Timeline do
     minimum = shot["minimum_duration_ms"] || shot["preferred_duration_ms"] || 1_000
     preferred = shot["preferred_duration_ms"] || minimum
     maximum = shot["maximum_duration_ms"] || preferred
-    active_selection = match?(%SelectionDecision{status: :active}, selection)
+    active_selection = formal_selection?(selection)
 
     %Clip{}
     |> Clip.create_changeset(%{
@@ -293,6 +293,15 @@ defmodule Dramatizer.Timeline do
     })
     |> Repo.insert!()
   end
+
+  defp formal_selection?(%SelectionDecision{status: :active, generation_spec_id: spec_id}) do
+    case Repo.get(Dramatizer.Generation.GenerationSpec, spec_id) do
+      %Dramatizer.Generation.GenerationSpec{formal: true} -> true
+      _ -> false
+    end
+  end
+
+  defp formal_selection?(_selection), do: false
 
   defp subtitle_attrs(events, narrative_revision_id) do
     Enum.flat_map(events, fn event ->

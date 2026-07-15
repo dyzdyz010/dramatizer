@@ -26,4 +26,17 @@ defmodule Dramatizer.Media.WorkerTest do
 
     assert {:error, %{code: "unknown_command"}} = Worker.run(:not_a_command, %{})
   end
+
+  test "worker returns a stable timeout instead of leaving a caller blocked" do
+    runner = fn _executable, _args, _options ->
+      Process.sleep(200)
+      {"late", 0}
+    end
+
+    assert {:error, %{code: "worker_timeout"}} =
+             Worker.run(:probe_image, %{"path" => "unused"},
+               timeout: 10,
+               command_runner: runner
+             )
+  end
 end

@@ -252,7 +252,7 @@ defmodule Dramatizer.ChangesTest do
 
   test "changing one selected shot debounces semantic QC to that shot and direct neighbors",
        context do
-    selections =
+    _initial_selections =
       for index <- 1..5 do
         {_spec, _asset, _technical, selection} =
           selected_candidate(context.project, "neighbor-#{index}", "shot:S00#{index}")
@@ -261,7 +261,24 @@ defmodule Dramatizer.ChangesTest do
       end
 
     ordered_slots = Enum.map(1..5, &"shot:S00#{&1}")
-    assert {:ok, jobs} = Changes.schedule_neighbor_qc(context.project, ordered_slots, "shot:S003")
+
+    assert Repo.aggregate(
+             from(job in Oban.Job,
+               where: job.worker == "Dramatizer.Quality.Jobs.SemanticQCJob"
+             ),
+             :count
+           ) == 0
+
+    {_replacement_spec, _replacement_asset, _technical, replacement} =
+      selected_candidate(context.project, "neighbor-3-replacement", "shot:S003")
+
+    jobs =
+      Repo.all(
+        from job in Oban.Job,
+          where: job.worker == "Dramatizer.Quality.Jobs.SemanticQCJob",
+          order_by: [asc: job.inserted_at]
+      )
+
     assert length(jobs) == 3
 
     targeted =
@@ -270,25 +287,34 @@ defmodule Dramatizer.ChangesTest do
       |> MapSet.new()
 
     expected =
-      selections
-      |> Enum.slice(1, 3)
-      |> Enum.map(& &1.asset_version_id)
+      Repo.all(
+        from selection in SelectionDecision,
+          where:
+            selection.project_id == ^context.project.id and selection.status == :active and
+              selection.slot_key in ^Enum.slice(ordered_slots, 1, 3),
+          select: selection.asset_version_id
+      )
       |> MapSet.new()
 
     assert targeted == expected
+    assert replacement.asset_version_id in targeted
+
+    middle_job = Enum.find(jobs, &(&1.args["asset_version_id"] == replacement.asset_version_id))
+
+    assert Map.keys(middle_job.args["selected_neighbor_ids"]) |> Enum.sort() ==
+             ["next", "previous"]
 
     assert {:ok, duplicate_jobs} =
              Changes.schedule_neighbor_qc(context.project, ordered_slots, "shot:S003")
 
     assert Enum.all?(duplicate_jobs, &(&1.conflict? == true))
 
-    all_qc_jobs =
-      Repo.all(
-        from job in Oban.Job,
-          where: job.worker == "Dramatizer.Quality.Jobs.SemanticQCJob"
-      )
-
-    assert length(all_qc_jobs) == 3
+    assert Repo.aggregate(
+             from(job in Oban.Job,
+               where: job.worker == "Dramatizer.Quality.Jobs.SemanticQCJob"
+             ),
+             :count
+           ) == 3
   end
 
   defp counts do

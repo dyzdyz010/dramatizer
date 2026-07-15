@@ -4,6 +4,7 @@ defmodule Dramatizer.Costs do
   import Ecto.Query
 
   alias Dramatizer.Costs.{Budget, CostEntry}
+  alias Dramatizer.Generation.{Attempt, ProviderRequestSnapshot}
   alias Dramatizer.Projects.Project
   alias Dramatizer.Repo
 
@@ -20,6 +21,41 @@ defmodule Dramatizer.Costs do
   def get_budget(%Project{id: project_id}) do
     ensure_budget(project_id)
     Repo.get_by!(Budget, project_id: project_id)
+  end
+
+  def reserve_provider_attempt(
+        %Project{} = project,
+        %ProviderRequestSnapshot{} = snapshot,
+        %Attempt{} = attempt,
+        provider
+      ) do
+    estimate = Map.get(snapshot.params, "estimated_cost_micros", 0)
+
+    with true <- is_integer(estimate) and estimate >= 0,
+         {:ok, _entry} <-
+           record_estimate(
+             project,
+             estimate,
+             "estimate:#{attempt.id}",
+             %{provider: to_string(provider), task_type: snapshot.task_type},
+             attempt.id
+           ),
+         {:ok, reservation} <-
+           reserve(project, estimate, "reservation:#{attempt.id}", attempt.id) do
+      {:ok, reservation}
+    else
+      false -> {:error, :invalid_cost_estimate}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def settle_provider_attempt(nil, _actual_micros, _metadata), do: :ok
+
+  def settle_provider_attempt(%CostEntry{} = reservation, actual_micros, metadata) do
+    case settle(reservation, actual_micros, metadata) do
+      {:ok, _entry} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   def record_estimate(
