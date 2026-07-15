@@ -64,6 +64,11 @@ config :dramatizer, :model_defaults, %{
   image_edit: image_model
 }
 
+config :dramatizer, :model_context_windows, %{
+  "gpt-5.6-terra" => 1_000_000,
+  "fake-text-v1" => 1_000_000
+}
+
 # Configure the endpoint
 config :dramatizer, DramatizerWeb.Endpoint,
   url: [host: "localhost"],

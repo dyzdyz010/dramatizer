@@ -219,11 +219,11 @@ Sources.analysis_input(project, revision_ids)
 TokenEstimator.preflight(text, resolved_model, reserved_tokens)
 ```
 
-- [ ] Test UTF-8/BOM normalization, newline normalization, TXT character offsets, Markdown preserved content, PDF page locators, and `text_layer_required` for image-only PDFs; do not add OCR fallback.
-- [ ] Persist immutable normalized UTF-8 source blobs through AssetStore and `source_revisions`; allow volume/companion/replacement while leaving old analysis branches replayable.
-- [ ] Implement a conservative, versioned whole-document token estimator and explicit `document_too_large` with measured/reserved/context values; prove input is never truncated or chunked.
-- [ ] Verify: `Push-Location app; python -m pip install -r priv/media_worker/requirements.txt; mix test test/dramatizer/sources/parser_test.exs test/dramatizer/sources_test.exs; Pop-Location`.
-- [ ] Commit: `feat: import whole text novels with source locators`.
+- [x] Test UTF-8/BOM normalization, newline normalization, TXT character offsets, Markdown preserved content, PDF page locators, and `text_layer_required` for image-only PDFs; do not add OCR fallback.
+- [x] Persist immutable normalized UTF-8 source blobs through AssetStore and `source_revisions`; allow volume/companion/replacement while leaving old analysis branches replayable.
+- [x] Implement a conservative, versioned whole-document token estimator and explicit `document_too_large` with measured/reserved/context values; prove input is never truncated or chunked.
+- [x] Verify: `Push-Location app; python -m pip install -r priv/media_worker/requirements.txt; mix test test/dramatizer/sources/parser_test.exs test/dramatizer/sources_test.exs; Pop-Location`.
+- [x] Commit: `feat: import whole text novels with source locators`.
 
 ### Task 7: Implement the analysis DAG, schemas, repair loop, and OpenAI Responses adapter
 

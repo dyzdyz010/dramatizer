@@ -22,6 +22,10 @@ class WorkerError(Exception):
         self.message = message
 
 
+def normalize_text(text: str) -> str:
+    return text.removeprefix("\ufeff").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def probe_image(payload: dict[str, Any]) -> dict[str, Any]:
     path = Path(payload["path"])
     if not path.is_file():
@@ -80,7 +84,10 @@ def extract_pdf_text(payload: dict[str, Any]) -> dict[str, Any]:
         combined: list[str] = []
 
         for page_number, page in enumerate(reader.pages, start=1):
-            text = page.extract_text() or ""
+            text = normalize_text(page.extract_text() or "")
+            if page_number > 1:
+                combined.append("\n")
+                offset += 1
             start = offset
             combined.append(text)
             offset += len(text)
@@ -93,7 +100,7 @@ def extract_pdf_text(payload: dict[str, Any]) -> dict[str, Any]:
                 }
             )
 
-        full_text = "\n".join(combined)
+        full_text = "".join(combined)
         if not full_text.strip():
             raise WorkerError("text_layer_required", "PDF has no usable text layer")
 
