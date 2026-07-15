@@ -398,8 +398,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
 
     visuals |> element("button[phx-value-id='#{reference.id}']", "确认并冻结") |> render_click()
 
-    {:ok, shots, _html} = live(conn, "/projects/#{project.id}/shots")
-    shots |> form("form[phx-submit='create-shot-plan']") |> render_submit()
+    assert Repo.get_by!(Draft, project_id: project.id, kind: :shot_plan, status: :editing)
+
+    {:ok, shots, shot_html} = live(conn, "/projects/#{project.id}/shots")
+    assert shot_html =~ "呈现目标"
+    assert shot_html =~ "连续性"
+    assert has_element?(shots, "form[phx-submit='save-shot-plan-draft']")
+    refute shot_html =~ "ShotPlan JSON"
     shot_plan = Repo.get_by!(Draft, project_id: project.id, kind: :shot_plan, status: :editing)
     shots |> element("button[phx-value-id='#{shot_plan.id}']", "确认并冻结") |> render_click()
     shots |> element("button", "编译冻结 GenerationSpec") |> render_click()

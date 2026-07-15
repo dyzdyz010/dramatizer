@@ -338,7 +338,7 @@ git commit -m "feat: build visual authority workspace"
 - ShotPlanEditor owns Scene groups and nested Shot presentation, coverage, duration, camera, staging, sound, continuity, and constraints.
 - Compiler accepts `shot-plan-draft-v2` while retaining legacy v1 compatibility.
 
-- [ ] **Step 1: Write failing rich-shot compile and UI tests**
+- [x] **Step 1: Write failing rich-shot compile and UI tests**
 
 ```elixir
 test "compiler preserves rich Chinese authority in deterministic spec" do
@@ -360,23 +360,23 @@ test "shot workspace renders domain controls and no ShotPlan JSON", %{conn: conn
 end
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `cd app; mix.bat test test/dramatizer/directing/compiler_test.exs test/dramatizer_web/forms/draft_forms_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: nested camera/constraints are not compiled and the JSON form remains.
 
-- [ ] **Step 3: Implement directing form, continuity strip, and Spec cards**
+- [x] **Step 3: Implement directing form, continuity strip, and Spec cards**
 
 Render compact/common Shot controls with expandable full director parameters. Normalize nested camera movement for the existing Timeline motion mapping while keeping the full Chinese authority in the Spec. SpecReview shows formal/exploration, exact revisions, constraints, model media profile, compiler/template versions, hash, shot selection controls, candidate count, and explicit paid-generation action.
 
-- [ ] **Step 4: Run GREEN and directing/generation regressions**
+- [x] **Step 4: Run GREEN and directing/generation regressions**
 
 Run: `cd app; mix.bat test test/dramatizer/directing/compiler_test.exs test/dramatizer/generation/orchestrator_invariants_test.exs test/dramatizer/timeline_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: all pass with deterministic v1 and v2 compilation.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/lib/dramatizer/directing.ex app/lib/dramatizer/directing/compiler.ex app/priv/generation_templates/v1/shot_keyframe.json.eex app/lib/dramatizer_web/live/components/shot_plan_editor.ex app/lib/dramatizer_web/live/components/generation_spec_review.ex app/lib/dramatizer_web/live/project_workspace_live.ex app/test/dramatizer/directing/compiler_test.exs app/test/dramatizer_web

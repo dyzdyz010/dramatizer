@@ -1,14 +1,5 @@
 {
   "kind": "shot_keyframe",
   "shot_id": <%= Jason.encode!(shot["id"]) %>,
-  "payload": {
-    "shot": <%= Dramatizer.CanonicalJSON.encode(shot) %>,
-    "width": <%= image_generation["width"] %>,
-    "height": <%= image_generation["height"] %>,
-    "aspect_width": <%= image_generation["width"] %>,
-    "aspect_height": <%= image_generation["height"] %>,
-    "timeline_aspect_width": <%= profile["aspect_width"] %>,
-    "timeline_aspect_height": <%= profile["aspect_height"] %>,
-    "dependencies": <%= Dramatizer.CanonicalJSON.encode(dependencies) %>
-  }
+  "payload": <%= Dramatizer.CanonicalJSON.encode(compiled_payload) %>
 }

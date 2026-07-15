@@ -345,7 +345,10 @@ defmodule DramatizerWeb.Live.Components.VisualDesignEditor do
         phx-value-collection={@collection}
         phx-value-item-id={@item_id}
         phx-value-direction="down"
-      >↓</button><button
+      >
+        ↓
+      </button>
+      <button
         type="button"
         aria-label="删除"
         class="danger"
@@ -353,7 +356,9 @@ defmodule DramatizerWeb.Live.Components.VisualDesignEditor do
         phx-value-id={@draft_id}
         phx-value-collection={@collection}
         phx-value-item-id={@item_id}
-      >×</button>
+      >
+        ×
+      </button>
     </div>
     """
   end

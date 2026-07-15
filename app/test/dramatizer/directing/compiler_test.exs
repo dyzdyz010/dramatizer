@@ -111,7 +111,7 @@ defmodule Dramatizer.Directing.CompilerTest do
     assert frozen["production_profile"]["formal_width"] == 1080
     assert frozen["image_generation"]["size"] == "768x1360"
     assert frozen["prompt_snapshot_ids"] == opts[:prompt_snapshot_ids]
-    assert frozen["compiler_version"] == "directing-compiler-v1"
+    assert frozen["compiler_version"] == "directing-compiler-v2"
     assert frozen["template_version"] == "v1"
     assert frozen["compiler_config"] == %{"candidate_count" => 2}
 
@@ -124,10 +124,94 @@ defmodule Dramatizer.Directing.CompilerTest do
     assert generation_revision.payload == first.payload
   end
 
+  test "rich v2 shots preserve full authority and normalize camera constraints deterministically" do
+    assert {:ok, project} = Projects.create_project(%{name: "富导演方案"})
+    narrative = confirmed(project, :narrative, %{"episode" => %{"title" => "雨夜来信"}})
+    visual = confirmed(project, :visual_design, %{"objects" => []})
+    references = confirmed(project, :reference_set, %{"primary_assets" => %{}})
+
+    proposal = %{
+      "schema_version" => "shot-plan-draft-v2",
+      "scenes" => [%{"id" => "SC001", "name" => "车站", "purpose" => "发现旧信"}],
+      "shots" => [rich_shot()],
+      "sound_strategy" => "dialogue_first",
+      "continuity" => %{"track" => "linear", "notes" => "旧信始终在右手"}
+    }
+
+    assert {:ok, draft} = Directing.create_shot_plan_draft(project, narrative, visual, proposal)
+    assert {:ok, shot_plan} = Revisions.confirm_draft(draft.id)
+
+    inputs = %{
+      narrative: narrative,
+      visual_design: visual,
+      reference_set: references,
+      shot_plan: shot_plan
+    }
+
+    assert {:ok, first} = Compiler.compile(project, inputs)
+    assert {:ok, second} = Compiler.compile(project, inputs)
+    assert first.hash == second.hash
+
+    spec = hd(first.payload["specs"])["payload"]
+    assert spec["camera"] == "push_in"
+    assert spec["camera_authority"]["shot_size"] == "近景"
+    assert spec["must_show"] == ["匿名信"]
+    assert spec["must_not_show"] == ["第三人清晰正脸"]
+    assert spec["continuity"]["end_state"] == ["右手持信"]
+    assert spec["shot"]["presentation_goal"] == "让观众识别旧信上的折痕"
+  end
+
   defp confirmed(project, kind, payload) do
     {:ok, draft} = Revisions.create_draft(project, kind, payload, %{"fixture" => true})
     {:ok, revision} = Revisions.confirm_draft(draft.id)
     revision
+  end
+
+  defp rich_shot do
+    %{
+      "id" => "S001",
+      "scene_id" => "SC001",
+      "beat_id" => "B001",
+      "story_event_ids" => ["EV001"],
+      "presentation_goal" => "让观众识别旧信上的折痕",
+      "description" => "镜头推近林夏手中的匿名信",
+      "shot_class" => "OBJECT_INSERT",
+      "coverage" => "primary",
+      "minimum_duration_ms" => 1_200,
+      "preferred_duration_ms" => 1_800,
+      "maximum_duration_ms" => 2_400,
+      "timing_rationale" => "留出识别细节的时间",
+      "camera" => %{
+        "shot_size" => "近景",
+        "angle" => "平视",
+        "movement" => "push_in",
+        "visual_focus" => "匿名信折痕",
+        "composition_notes" => "手与信占据画面中央",
+        "lens_intent" => "压缩背景"
+      },
+      "staging" => %{
+        "location_ref" => "location:station",
+        "participant_refs" => ["character:linxia"],
+        "prop_refs" => ["prop:letter"],
+        "blocking_notes" => "林夏右手抬起信"
+      },
+      "audio_strategy" => %{
+        "mode" => "no_dialogue",
+        "dialogue_event_ids" => [],
+        "sound_notes" => "雨声"
+      },
+      "continuity" => %{
+        "start_state" => ["右手持信"],
+        "actions" => ["抬起信"],
+        "end_state" => ["右手持信"],
+        "relation_to_previous" => "continuous"
+      },
+      "constraints" => %{
+        "must_show" => ["匿名信"],
+        "must_not_show" => ["第三人清晰正脸"],
+        "reference_object_ids" => ["character:linxia", "prop:letter"]
+      }
+    }
   end
 
   defp fixture_path(name), do: Path.expand("../../support/fixtures/sources/#{name}", __DIR__)

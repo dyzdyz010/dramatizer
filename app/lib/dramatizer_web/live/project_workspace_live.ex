@@ -39,11 +39,18 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   alias Dramatizer.Visuals
   alias Dramatizer.Workflow
   alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
-  alias DramatizerWeb.Forms.{ModelOverrideForm, NarrativeDraftForm, VisualDesignDraftForm}
+
+  alias DramatizerWeb.Forms.{
+    ModelOverrideForm,
+    NarrativeDraftForm,
+    ShotPlanDraftForm,
+    VisualDesignDraftForm
+  }
 
   alias DramatizerWeb.Live.Components.{
     AnalysisReview,
     CandidateGallery,
+    GenerationSpecReview,
     NarrativeEditor,
     ProjectSettings,
     ProviderStatus,
@@ -51,6 +58,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     StageNav,
     TimelineEditor,
     ReferenceMatrix,
+    ShotPlanEditor,
     VisualDesignEditor
   }
 
@@ -65,9 +73,6 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       socket
       |> assign(:project, project)
       |> assign(:page_title, project.name)
-      |> assign(:json_form, to_form(%{"payload" => "{}"}, as: :draft))
-      |> assign(:visual_form, visual_form())
-      |> assign(:shot_form, shot_form())
       |> assign(:impact, nil)
       |> allow_upload(:source,
         accept: ~w(.txt .md .markdown .pdf),
@@ -378,6 +383,19 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               )
           end
 
+        {:ok, %Revision{kind: :reference_set} = reference_set} ->
+          case create_directing_proposal(socket, reference_set) do
+            {:ok, _draft} ->
+              put_flash(socket, :info, "ReferenceSet 已冻结，Directing 提案已生成。")
+
+            {:error, reason} ->
+              put_flash(
+                socket,
+                :error,
+                "ReferenceSet 已冻结，但 Directing 提案生成失败：#{human_error(reason)}"
+              )
+          end
+
         {:ok, _revision} ->
           put_flash(socket, :info, "已冻结为不可变 Revision。")
 
@@ -386,6 +404,62 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       end
 
     {:noreply, load_workspace(socket)}
+  end
+
+  def handle_event("save-shot-plan-draft", %{"id" => id, "shot_plan" => params}, socket) do
+    draft = Repo.get!(Draft, id)
+
+    result =
+      with :shot_plan <- draft.kind,
+           {:ok, payload} <- ShotPlanDraftForm.cast(params, draft.payload) do
+        Revisions.replace_draft_payload(draft, payload)
+      else
+        {:error, errors} -> {:error, {:form_validation, errors}}
+        _other -> {:error, :invalid_shot_plan}
+      end
+
+    {:noreply, result_flash(socket, result, "ShotPlan Draft 已保存。") |> load_workspace()}
+  end
+
+  def handle_event(
+        "add-shot-item",
+        %{"id" => id, "collection" => collection} = params,
+        socket
+      ) do
+    mutate_shot_draft(socket, id, fn payload ->
+      ShotPlanDraftForm.add(
+        payload,
+        collection,
+        shot_item(collection, Map.get(params, "scene-id"))
+      )
+    end)
+  end
+
+  def handle_event(
+        "remove-shot-item",
+        %{"id" => id, "collection" => collection, "item-id" => item_id},
+        socket
+      ) do
+    mutate_shot_draft(socket, id, fn payload ->
+      ShotPlanDraftForm.remove(payload, collection, item_id)
+    end)
+  end
+
+  def handle_event(
+        "move-shot-item",
+        %{
+          "id" => id,
+          "collection" => collection,
+          "item-id" => item_id,
+          "direction" => direction
+        },
+        socket
+      ) do
+    parsed_direction = if direction == "up", do: :up, else: :down
+
+    mutate_shot_draft(socket, id, fn payload ->
+      ShotPlanDraftForm.move(payload, collection, item_id, parsed_direction)
+    end)
   end
 
   def handle_event("save-visual-design-draft", %{"id" => id, "visual_design" => params}, socket) do
@@ -1037,12 +1111,14 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           </section>
 
           <section :if={@stage == :shots} class="workspace-panel" data-human-gate>
-            <.form for={@shot_form} phx-submit="create-shot-plan" class="structured-form">
-              <h3>导演方案与镜头节奏</h3>
-              <.input field={@shot_form[:proposal]} type="textarea" label="ShotPlan JSON" rows="12" />
-              <.button variant="primary">创建 ShotPlan 草稿</.button>
-            </.form>
-            <.draft_editor :for={draft <- drafts_for(@drafts, :shot_plan)} draft={draft} />
+            <ShotPlanEditor.shot_plan_editor
+              :for={draft <- drafts_for(@drafts, :shot_plan)}
+              draft={draft}
+            />
+            <div :if={drafts_for(@drafts, :shot_plan) == []} class="empty-panel">
+              <h3>等待 ReferenceSet 权威</h3>
+              <p>确认主参考图集合后，系统会自动生成完整导演提案。</p>
+            </div>
             <div class="panel-actions production-actions">
               <button type="button" class="btn btn-soft" phx-click="compile-shot-specs">
                 编译冻结 GenerationSpec
@@ -1056,6 +1132,10 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                 生成候选并执行 QC
               </button>
             </div>
+            <GenerationSpecReview.generation_spec_review
+              revision={latest_revision(@revisions, :generation_spec)}
+              specs={@specs}
+            />
             <CandidateGallery.candidate_gallery candidates={@shot_candidates} />
             <div :for={stale <- @stale_records} class="stale-row">
               <div>
@@ -1171,54 +1251,6 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
   attr :draft, :map, required: true
 
-  defp draft_editor(assigns) do
-    assigns = assign(assigns, :form, draft_form(assigns.draft))
-
-    ~H"""
-    <article class="draft-editor">
-      <div class="section-heading compact">
-        <div>
-          <span class="eyebrow">EDITABLE AUTHORITY</span>
-          <h3>{kind_label(@draft.kind)} 草稿</h3>
-        </div>
-        <.state_badge state={if @draft.status == :confirmed, do: :ready, else: :waiting_user} />
-      </div>
-      <.form
-        :if={@draft.status == :editing}
-        for={@form}
-        id={"draft-#{@draft.id}"}
-        phx-submit="update-draft"
-        phx-value-id={@draft.id}
-      >
-        <.input field={@form[:payload]} type="textarea" label="结构化内容" rows="12" />
-        <div class="form-actions">
-          <button type="submit" class="btn btn-soft">保存修改</button>
-          <button
-            type="button"
-            class="btn btn-primary"
-            phx-click="confirm-draft"
-            phx-value-id={@draft.id}
-          >
-            确认并冻结 Revision
-          </button>
-        </div>
-      </.form>
-      <pre :if={@draft.status == :confirmed} class="json-preview">{Jason.encode!(@draft.payload, pretty: true)}</pre>
-      <button
-        :if={@draft.status == :confirmed and @draft.confirmed_revision_id}
-        type="button"
-        class="btn btn-ghost"
-        phx-click="derive-draft"
-        phx-value-revision-id={@draft.confirmed_revision_id}
-      >
-        从此 Revision 派生修改
-      </button>
-    </article>
-    """
-  end
-
-  attr :draft, :map, required: true
-
   defp reference_set_editor(assigns) do
     assigns =
       assigns
@@ -1258,7 +1290,9 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           class="btn btn-ghost"
           phx-click="derive-draft"
           phx-value-revision-id={@draft.confirmed_revision_id}
-        >从此 Revision 派生修改</button>
+        >
+          从此 Revision 派生修改
+        </button>
       </div>
     </article>
     """
@@ -1271,6 +1305,103 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       Visuals.create_proposal_draft(project, narrative, proposal.output)
     end
   end
+
+  defp create_directing_proposal(socket, reference_set) do
+    narrative = latest_revision(socket.assigns.revisions, :narrative)
+    visual_design = latest_revision(socket.assigns.revisions, :visual_design)
+
+    with %Revision{} = narrative <- narrative,
+         %Revision{} = visual_design <- visual_design,
+         {:ok, authority} <-
+           Directing.proposal_authority(narrative, visual_design, reference_set),
+         {:ok, proposal} <-
+           StructuredTextProposal.propose(
+             socket.assigns.project,
+             :directing_proposal,
+             authority
+           ) do
+      Directing.create_proposal_draft(
+        socket.assigns.project,
+        narrative,
+        visual_design,
+        reference_set,
+        proposal.output
+      )
+    else
+      nil -> {:error, :confirmed_production_revisions_required}
+      error -> error
+    end
+  end
+
+  defp mutate_shot_draft(socket, draft_id, mutation) do
+    draft = Repo.get!(Draft, draft_id)
+    changed = mutation.(draft.payload)
+
+    result =
+      with :shot_plan <- draft.kind,
+           {:ok, payload} <-
+             ShotPlanDraftForm.cast(ShotPlanDraftForm.from_payload(changed), draft.payload) do
+        Revisions.replace_draft_payload(draft, payload)
+      else
+        {:error, errors} -> {:error, {:form_validation, errors}}
+        _other -> {:error, :invalid_shot_plan}
+      end
+
+    {:noreply, result_flash(socket, result, "ShotPlan Draft 已更新。") |> load_workspace()}
+  end
+
+  defp shot_item("scenes", _scene_id) do
+    %{"id" => generated_id("SC"), "name" => "新场景", "purpose" => "待补充"}
+  end
+
+  defp shot_item("shots", scene_id) do
+    %{
+      "id" => generated_id("SH"),
+      "scene_id" => scene_id || "",
+      "beat_id" => "",
+      "story_event_ids" => [],
+      "presentation_goal" => "待补充呈现目标",
+      "description" => "待补充镜头动作",
+      "shot_class" => "MEDIUM",
+      "coverage" => "primary",
+      "minimum_duration_ms" => 1_000,
+      "preferred_duration_ms" => 1_500,
+      "maximum_duration_ms" => 2_000,
+      "timing_rationale" => "待补充",
+      "camera" => %{
+        "shot_size" => "中景",
+        "angle" => "平视",
+        "movement" => "static",
+        "visual_focus" => "待补充",
+        "composition_notes" => "",
+        "lens_intent" => ""
+      },
+      "staging" => %{
+        "location_ref" => "location:unspecified",
+        "participant_refs" => [],
+        "prop_refs" => [],
+        "blocking_notes" => ""
+      },
+      "audio_strategy" => %{
+        "mode" => "no_dialogue",
+        "dialogue_event_ids" => [],
+        "sound_notes" => ""
+      },
+      "continuity" => %{
+        "start_state" => [],
+        "actions" => [],
+        "end_state" => [],
+        "relation_to_previous" => "cut"
+      },
+      "constraints" => %{
+        "must_show" => [],
+        "must_not_show" => [],
+        "reference_object_ids" => []
+      }
+    }
+  end
+
+  defp shot_item(_collection, _scene_id), do: %{"id" => generated_id("SHOT")}
 
   defp mutate_visual_draft(socket, draft_id, mutation) do
     draft = Repo.get!(Draft, draft_id)
@@ -1954,68 +2085,6 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp latest_revision(revisions, kind), do: Enum.find(revisions, &(&1.kind == kind))
   defp drafts_for(drafts, kind), do: Enum.filter(drafts, &(&1.kind == kind))
 
-  defp draft_form(draft) do
-    to_form(%{"payload" => Jason.encode!(draft.payload, pretty: true)}, as: :draft)
-  end
-
-  defp visual_form do
-    objects = [
-      %{
-        "id" => "character:lead",
-        "type" => "character",
-        "name" => "主角",
-        "recurring" => true,
-        "variants" => [%{"id" => "default"}]
-      },
-      %{
-        "id" => "location:main",
-        "type" => "location",
-        "name" => "主场景",
-        "key" => true,
-        "variants" => [%{"id" => "default"}]
-      }
-    ]
-
-    to_form(%{"objects" => Jason.encode!(objects, pretty: true)}, as: :visual)
-  end
-
-  defp shot_form do
-    proposal = %{
-      "scenes" => [%{"id" => "SC001", "name" => "主场景"}],
-      "shots" => [
-        %{
-          "id" => "S001",
-          "scene_id" => "SC001",
-          "description" => "雨夜车站建立环境与人物关系",
-          "minimum_duration_ms" => 1_500,
-          "preferred_duration_ms" => 2_000,
-          "maximum_duration_ms" => 2_800,
-          "camera" => "push_in"
-        },
-        %{
-          "id" => "S002",
-          "scene_id" => "SC001",
-          "description" => "林夏发现匿名信上的异常细节",
-          "minimum_duration_ms" => 1_400,
-          "preferred_duration_ms" => 1_800,
-          "maximum_duration_ms" => 2_500,
-          "camera" => "pan_left"
-        },
-        %{
-          "id" => "S003",
-          "scene_id" => "SC001",
-          "description" => "林夏抬头确认寄信人仍在附近",
-          "minimum_duration_ms" => 1_300,
-          "preferred_duration_ms" => 1_700,
-          "maximum_duration_ms" => 2_300,
-          "camera" => "pull_out"
-        }
-      ]
-    }
-
-    to_form(%{"proposal" => Jason.encode!(proposal, pretty: true)}, as: :shot)
-  end
-
   defp result_flash(socket, {:ok, _value}, message), do: put_flash(socket, :info, message)
 
   defp result_flash(socket, {:error, reason}, _message),
@@ -2024,6 +2093,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp result_flash(socket, other, _message), do: put_flash(socket, :error, human_error(other))
 
   defp human_error({:unresolved_stale, _ids}), do: "仍有未解决的过期选择，需先固定旧输入或替换。"
+  defp human_error({:form_validation, _errors}), do: "表单存在缺失或冲突字段，请检查后再保存。"
   defp human_error(:confirmed_timeline_inputs_required), do: "请先确认 Narrative 与 ShotPlan。"
   defp human_error(:analysis_snapshot_required), do: "请先完成全文分析。"
   defp human_error(:invalid_json), do: "JSON 格式无效。"

@@ -379,6 +379,7 @@ defmodule Dramatizer.Timeline do
   defp motion_from_camera("pan_right"), do: :pan_right
   defp motion_from_camera("pan_up"), do: :pan_up
   defp motion_from_camera("pan_down"), do: :pan_down
+  defp motion_from_camera(%{"movement" => movement}), do: motion_from_camera(movement)
 
   defp motion_from_camera(_value), do: :static
 

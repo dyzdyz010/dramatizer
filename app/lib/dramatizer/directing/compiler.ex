@@ -10,7 +10,7 @@ defmodule Dramatizer.Directing.Compiler do
   alias Dramatizer.Revisions.{Draft, Revision}
   alias Dramatizer.Sources.SourceRevision
 
-  @compiler_version "directing-compiler-v1"
+  @compiler_version "directing-compiler-v2"
   @template_version "v1"
   @revision_kinds %{
     narrative: :narrative,
@@ -131,14 +131,70 @@ defmodule Dramatizer.Directing.Compiler do
   end
 
   defp render_shot_spec(shot, profile, dependencies, image_generation) do
+    compiled_payload = compiled_shot_payload(shot, profile, dependencies, image_generation)
+
     template_path("shot_keyframe.json.eex")
     |> EEx.eval_file(
       shot: shot,
-      profile: profile,
-      dependencies: dependencies,
-      image_generation: image_generation
+      compiled_payload: compiled_payload
     )
     |> Jason.decode!()
+  end
+
+  defp compiled_shot_payload(shot, profile, dependencies, image_generation) do
+    camera_authority = normalize_camera(shot["camera"])
+    constraints = normalize_constraints(shot)
+
+    %{
+      "shot" => shot,
+      "scene_id" => shot["scene_id"],
+      "beat_id" => shot["beat_id"],
+      "story_event_ids" => shot["story_event_ids"] || [],
+      "presentation_goal" =>
+        shot["presentation_goal"] || shot["action"] || shot["description"] || "",
+      "description" => shot["description"] || shot["action"] || "",
+      "shot_class" => shot["shot_class"] || "legacy",
+      "coverage" => shot["coverage"] || "primary",
+      "minimum_duration_ms" =>
+        shot["minimum_duration_ms"] || shot["preferred_duration_ms"] || 1_000,
+      "preferred_duration_ms" => shot["preferred_duration_ms"] || 1_000,
+      "maximum_duration_ms" =>
+        shot["maximum_duration_ms"] || shot["preferred_duration_ms"] || 1_000,
+      "camera" => camera_authority["movement"],
+      "camera_authority" => camera_authority,
+      "staging" => shot["staging"] || %{},
+      "audio_strategy" => shot["audio_strategy"] || %{"mode" => "no_dialogue"},
+      "continuity" => shot["continuity"] || %{},
+      "must_show" => constraints["must_show"],
+      "must_not_show" => constraints["must_not_show"],
+      "reference_object_ids" => constraints["reference_object_ids"],
+      "width" => image_generation["width"],
+      "height" => image_generation["height"],
+      "aspect_width" => image_generation["width"],
+      "aspect_height" => image_generation["height"],
+      "timeline_aspect_width" => profile["aspect_width"],
+      "timeline_aspect_height" => profile["aspect_height"],
+      "dependencies" => dependencies
+    }
+  end
+
+  defp normalize_camera(camera) when is_map(camera) do
+    camera
+    |> stringify()
+    |> Map.put_new("movement", "static")
+  end
+
+  defp normalize_camera(camera) when is_binary(camera), do: %{"movement" => camera}
+  defp normalize_camera(_camera), do: %{"movement" => "static"}
+
+  defp normalize_constraints(shot) do
+    constraints = stringify(shot["constraints"] || %{})
+
+    %{
+      "must_show" => constraints["must_show"] || shot["must_include"] || [],
+      "must_not_show" => constraints["must_not_show"] || shot["must_forbid"] || [],
+      "reference_object_ids" => constraints["reference_object_ids"] || []
+    }
   end
 
   defp image_generation_snapshot(project) do
