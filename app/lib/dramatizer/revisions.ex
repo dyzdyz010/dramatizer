@@ -35,6 +35,26 @@ defmodule Dramatizer.Revisions do
     end
   end
 
+  def replace_draft_payload(%Draft{id: id, lock_version: expected_lock}, payload)
+      when is_map(payload) do
+    draft = Repo.get!(Draft, id)
+
+    cond do
+      draft.status != :editing ->
+        {:error, :draft_confirmed}
+
+      draft.lock_version != expected_lock ->
+        {:error, :stale_draft}
+
+      true ->
+        draft
+        |> Draft.edit_changeset(%{payload: payload})
+        |> Repo.update()
+    end
+  rescue
+    Ecto.StaleEntryError -> {:error, :stale_draft}
+  end
+
   def confirm_draft(draft_id) do
     Repo.transaction(fn ->
       draft = Repo.one!(from item in Draft, where: item.id == ^draft_id, lock: "FOR UPDATE")

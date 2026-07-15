@@ -166,7 +166,7 @@ git commit -m "feat: add structured production proposals"
 - `cast/2` preserves unknown legacy payload keys while replacing owned fields.
 - `Revisions.replace_draft_payload/2` replaces a validated complete payload under optimistic lock; `update_draft/2` remains merge-oriented for compatibility.
 
-- [ ] **Step 1: Write failing round-trip and validation tests**
+- [x] **Step 1: Write failing round-trip and validation tests**
 
 ```elixir
 test "narrative form round-trips nested business fields and preserves legacy extensions" do
@@ -184,23 +184,23 @@ test "shot form rejects inverted duration bounds" do
 end
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `cd app; mix.bat test test/dramatizer_web/forms/draft_forms_test.exs test/dramatizer/revisions_test.exs test/dramatizer/visuals_test.exs`
 
 Expected: adapters and replace command are missing.
 
-- [ ] **Step 3: Implement deterministic casts and nested operations**
+- [x] **Step 3: Implement deterministic casts and nested operations**
 
 Normalize indexed maps in numeric order; generate stable IDs only for genuinely new items; parse checkbox, integer, decimal, comma/newline tag lists, source semantics, and ProductionProfile overrides. Validate unique IDs, required references, source locator requirements, VisualVariant/slot completeness, shot duration ordering, and must-show/must-not-show conflicts.
 
-- [ ] **Step 4: Run GREEN and compiler/timeline regressions**
+- [x] **Step 4: Run GREEN and compiler/timeline regressions**
 
 Run: `cd app; mix.bat test test/dramatizer_web/forms/draft_forms_test.exs test/dramatizer/revisions_test.exs test/dramatizer/visuals_test.exs test/dramatizer/directing/compiler_test.exs test/dramatizer/timeline_test.exs`
 
 Expected: all selected tests pass and legacy payload extensions survive form save/confirm.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/lib/dramatizer/revisions.ex app/lib/dramatizer/visuals.ex app/lib/dramatizer/directing.ex app/lib/dramatizer_web/forms app/test/dramatizer_web/forms app/test/dramatizer/revisions_test.exs app/test/dramatizer/visuals_test.exs

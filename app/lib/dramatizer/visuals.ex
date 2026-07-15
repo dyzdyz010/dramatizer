@@ -98,10 +98,14 @@ defmodule Dramatizer.Visuals do
           variants =
             object
             |> Map.get("variants", [%{"id" => "default"}])
-            |> Enum.map(&Map.put(&1, "required_slots", slots))
+            |> Enum.map(&Map.put_new(&1, "required_slots", slots))
 
           reference_required =
-            Map.get(object, "recurring", false) or Map.get(object, "key", false)
+            Map.get(
+              object,
+              "reference_required",
+              Map.get(object, "recurring", false) or Map.get(object, "key", false)
+            )
 
           prepared =
             object

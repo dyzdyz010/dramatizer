@@ -78,4 +78,28 @@ defmodule Dramatizer.RevisionsTest do
     assert revision.profile_snapshot["shot_max"] == 36
     assert Projects.effective_profile(project).duration_min_seconds == 60
   end
+
+  test "replace_draft_payload replaces instead of merging and rejects stale writers" do
+    assert {:ok, project} = Projects.create_project(%{name: "完整表单保存"})
+
+    assert {:ok, draft} =
+             Revisions.create_draft(
+               project,
+               :narrative,
+               %{"title" => "旧标题", "removed_by_form" => true},
+               %{}
+             )
+
+    assert {:ok, replaced} =
+             Revisions.replace_draft_payload(draft, %{
+               "schema_version" => "narrative-draft-v2",
+               "title" => "新标题"
+             })
+
+    refute Map.has_key?(replaced.payload, "removed_by_form")
+    assert replaced.payload["title"] == "新标题"
+
+    assert {:error, :stale_draft} =
+             Revisions.replace_draft_payload(draft, %{"title" => "过期覆盖"})
+  end
 end

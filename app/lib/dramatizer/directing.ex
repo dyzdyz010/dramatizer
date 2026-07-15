@@ -14,6 +14,7 @@ defmodule Dramatizer.Directing do
       when is_map(proposal) do
     payload =
       proposal
+      |> Map.put_new("schema_version", "shot-plan-draft-v2")
       |> Map.put("narrative_revision_id", narrative.id)
       |> Map.put("visual_design_revision_id", visual_design.id)
       |> Map.put_new("sound_strategy", "silent_placeholder")

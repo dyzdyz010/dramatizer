@@ -103,6 +103,33 @@ defmodule Dramatizer.VisualsTest do
            end)
   end
 
+  test "explicit reference decisions and custom required slots survive normalization" do
+    assert {:ok, project} = Projects.create_project(%{name: "显式参考策略"})
+
+    objects = [
+      %{
+        "id" => "character:guest",
+        "type" => "character",
+        "name" => "过场人物",
+        "recurring" => true,
+        "key" => true,
+        "reference_required" => false,
+        "variants" => [
+          %{
+            "id" => "rain",
+            "name" => "雨中",
+            "required_slots" => ["custom_silhouette"]
+          }
+        ]
+      }
+    ]
+
+    assert {:ok, draft} = Visuals.create_design_draft(project, nil, objects)
+    object = hd(draft.payload["objects"])
+    refute object["reference_required"]
+    assert hd(object["variants"])["required_slots"] == ["custom_silhouette"]
+  end
+
   defp upload_asset(project) do
     {:ok, intent} =
       Assets.create_upload_intent(project, %{
