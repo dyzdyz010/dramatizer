@@ -1,6 +1,6 @@
 # Dramatizer 单用户实施对齐记录
 
-**状态：** 持续对齐中，仅记录已由用户明确确认的决策
+**状态：** D-001 至 D-059 已完成对齐；后续调整继续只记录用户明确确认的方向性变更
 
 **开始日期：** 2026-07-14
 
@@ -303,9 +303,251 @@ GenerationSpec
 - Provider 返回的 conversation/response ID 可以作为诊断元数据保存，但不能成为重试、恢复或结果解释所必需的业务状态。
 - 任一 NodeRun 必须能够仅凭数据库与 AssetStore 中固定的输入快照重新构造等价请求。
 
-## 5. 记录规则
+## 5. 视觉资产与图像候选闭环
+
+### D-032：四层视觉生产链
+
+角色、场景和道具的正式图像生产固定为：
+
+```text
+文本设定 Revision
+→ VisualDesignRevision
+→ ReferenceSetRevision
+→ ShotKeyframe Candidate AssetVersion
+```
+
+- 文本设定 Revision 保存已经确认的叙事事实与来源语义。
+- AI 基于文本设定补全外观、服装、色彩、材质、光照和禁止项，先形成可编辑 VisualDesign Draft；用户确认后才创建不可变 VisualDesignRevision。
+- 参考图生成必须引用精确的 VisualDesignRevision；用户选定各槽位主图后创建不可变 ReferenceSetRevision。
+- 正式 ShotKeyframe 生成必须引用精确的 ShotPlanRevision、VisualDesignRevision 和 ReferenceSetRevision，不得解析浮动的 `latest`。
+
+### D-033：必须具备参考图的对象范围
+
+- 常驻角色在进入正式 ShotKeyframe 生成前必须具备已确认的 ReferenceSetRevision。
+- 跨多个镜头复用或剧情关键的场景、道具同样必须具备已确认的 ReferenceSetRevision。
+- 只出现一次且非剧情关键的普通对象允许仅使用已确认文本设定生成，不强制先生产参考图。
+- AI 可以建议对象是否属于“常驻、跨镜头或剧情关键”，但该标记必须进入分集/视觉 Draft 供用户确认；正式 Compiler 只读取已确认标记，不在执行时使用不可重放的隐式判断。
+
+### D-034：Reference Set 类型模板与 Visual Variant
+
+首版按对象类型提供可增删槽位的最小模板：
+
+- 角色：面部近景、全身三分之四视角、表情/特征参考；
+- 场景：空间全景、主要拍摄方向、关键光照版本；
+- 道具：整体外观、关键细节或状态。
+
+模板是创建 Draft 时的默认值，不是不可修改的硬限制。服装、年龄阶段、昼夜、季节、完好/损坏等会显著改变视觉语义的状态必须建立独立 `VisualVariant`，并由相应 ReferenceSetRevision 精确引用；不得用新图覆盖原状态。
+
+### D-035：探索生成与正式生成分离
+
+- 尚未确认的 VisualDesign Draft 或参考图候选可以用于探索性 ShotKeyframe 生成，以便快速试验造型和画面方向。
+- 探索产物仍保存完整 GenerationSpec、Attempt、输入引用和 AssetVersion，但标记为非正式生产候选。
+- 能够被正式选择并进入受控时间线的 ShotKeyframe，必须由已确认的 VisualDesignRevision 和 ReferenceSetRevision 编译生成。
+- 将探索结果转为正式输入时不得原地改变其语义；必须先确认上游 Revision，再创建引用正式输入的新 GenerationSpec/Attempt。
+
+### D-036：用户上传图与 AI 生成图共用资产路径
+
+- 首版支持用户上传角色、场景和道具参考图。
+- 上传图与 AI 生成图都必须经过同一 `staging → 校验/hash → finalize → AssetVersion` 路径。
+- 用户可以把上传 AssetVersion 放入 Reference Set Draft，并在确认后由 ReferenceSetRevision 精确引用。
+- 来源类型、原文件名、媒体探测结果和内容 hash 作为谱系元数据保存；业务下游不建立“上传图旁路”。
+
+### D-037：图像候选数量默认值
+
+- 基础参考资产的每次生成默认产生 4 个候选。
+- 逐镜 ShotKeyframe 的每次生成默认产生 2 个候选。
+- 系统提供上述建议默认值，Project 可以修改项目默认值，具体生成任务可以设置仅对本次 Attempt 集生效的一次性覆盖。
+- 候选数量必须随 GenerationSpec/ProviderRequestSnapshot 冻结；修改默认值不追溯改变已创建的任务。
+
+### D-038：主图选择、候选保留与图像编辑
+
+- Reference Set 的每个模板槽位选择一个主 AssetVersion；多个槽位的主图共同组成一个 ReferenceSetRevision。
+- 每个 ShotKeyframe 选择一个主候选供后续生产引用，未选候选继续保留并可用于比较或以后改选。
+- 首版支持基于现有图片和编辑提示词继续生成；遮罩局部编辑预留 ProviderRequest 与谱系数据结构，但首版不实现遮罩画布 UI。
+- 提示词编辑、重新生成和未来遮罩编辑都必须创建新的 GenerationAttempt 与子 AssetVersion，并保存父资产引用；任何操作都不得覆盖原文件或原 AssetVersion。
+
+### D-039：首版图像候选采用两层 QC
+
+首版静态参考图和 ShotKeyframe Candidate 只实现两层自动 QC：
+
+1. `ImageTechnicalQC`：使用确定性媒体工具和规则检查文件可读取/解码、实际格式、宽高、画幅、最低分辨率及基础完整性；
+2. `ImageSemanticQC`：使用支持图像输入和结构化输出的多模态文本 Adapter，对照精确 GenerationSpecRevision 与参考资产生成结构化质量证据。
+
+- ImageSemanticQC 的系统默认模型为 `gpt-5.6-terra`，继续遵守 D-023 的 Project 与 task override；高要求复核可以一次性切换为 `gpt-5.6-sol`。
+- 两层 evaluator 都必须保存实现/模型、配置、Prompt、输入闭包和输出 hash，重试创建新 Attempt，不覆盖旧结果。
+- 首版不引入专用身份 embedding、人脸识别、姿态估计或其他独立 CV 模型；未来 evaluator 通过同一 QualityEvidence 合同追加。
+
+### D-040：图像语义 QC 的标准检查维度
+
+ImageSemanticQC 至少按以下独立维度输出 `pass/warning/fail/inconclusive`、置信度、理由及可操作建议：
+
+- 角色身份与外观 VisualVariant；
+- 服装、发型和其他已确认视觉特征；
+- 场景、时间/光照和关键空间特征；
+- 剧情关键道具及其状态；
+- GenerationSpec 中的必须出现和禁止出现元素；
+- 构图、景别、机位、动作和表情；
+- 已确认视觉风格；
+- 明显的肢体、文字、水印和其他画面伪影。
+
+每个维度保留独立证据，首版不把全部判断压缩成一个不可解释的综合分数，也不开放用户自定义检查清单。
+
+### D-041：只有确定性技术失败硬阻断
+
+- 文件损坏、不可读取/解码或不满足 GenerationSpec 中硬媒体规格时，ImageTechnicalQC 产生硬失败；该 AssetVersion 不得成为 Reference Set 或 ShotKeyframe 的正式主图。
+- ImageSemanticQC 属于概率性观察。即使某维度为 `fail`，系统也只能建议编辑、重生成或返回上游修改，不能自动否决用户选择。
+- 用户可以明确接受带语义 fail、warning、inconclusive 或 evaluator failed/unavailable 状态的技术可用候选；系统保存当时的检查结果和可选说明，不引入 waiver、审批角色或权限合同。
+- 自动 `pass` 同样不会自动选择候选；正式主图仍由用户的 SelectionDecision 产生。
+
+### D-042：ShotKeyframe 一致性比较上下文
+
+ShotKeyframe 的 ImageSemanticQC 固定读取：
+
+1. 当前候选所绑定的精确 GenerationSpecRevision；
+2. 当前 Shot 引用的精确 Character/Location/Prop ReferenceSetRevision 及其主 AssetVersion；
+3. 存在时，叙事顺序上前后相邻且已选择的 ShotKeyframe AssetVersion。
+
+- 第一或最后一个 Shot 缺少一侧相邻镜头时，仅使用存在的上下文，不视为错误。
+- 首版不在每次候选 QC 中输入整集全部已选镜头。
+- QualityReport 必须冻结实际使用的全部精确引用；相邻选择之后发生变化时，旧报告仍可重放，但其 freshness/失效规则由后续依赖传播决策确定。
+
+### D-043：所有图像候选默认自动执行 QC
+
+- AssetVersion finalize 后立即调度 ImageTechnicalQC。
+- 技术上可用的每个参考图和 ShotKeyframe 候选自动调度 ImageSemanticQC，不等待用户先选出主候选。
+- 候选只有在两层 QC Attempt 都进入终态后才进入正式可选状态；语义层的终态可以是正常报告、`failed`、`unavailable` 或 `inconclusive`，并按 D-041 交由用户判断。
+- 候选画廊可以在 QC 运行时提前展示资产与进度，但不得把“尚未检查”伪装成 `pass`。
+
+### D-044：候选画廊与人工选择体验
+
+- 候选审核界面并排展示候选图、精确参考图、GenerationSpec 摘要和各维度 QC 证据。
+- 系统可以根据确定性状态与语义结果排序或标记候选，但不自动预选或采用任何一张。
+- 用户显式选择每个 Reference Set 槽位或 ShotKeyframe 的主 AssetVersion；其他候选保留。
+- 用户接受带语义 fail 的候选时可以填写说明，但首版不强制填写，也不建立审批流。
+
+### D-045：QC 修复入口不自动调用 Provider
+
+QC 可以推荐动作，但不得因机器判断自动产生新的付费生成调用。用户可以明确选择：
+
+1. 使用同一 GenerationSpec 创建新的生成 Attempt；
+2. 以当前候选为父资产，通过编辑提示词创建图像编辑 Attempt；
+3. 接受当前技术可用候选；
+4. 返回上游修改 VisualDesign、ReferenceSet 或 ShotPlan Draft，确认新 Revision 后重新编译受影响的 GenerationSpec。
+
+每种路径都保留原候选、原 QC 和原 Attempt。返回上游修改不得就地改变已确认 Revision；重新编译和后续生成只产生新的追加式对象。
+
+## 6. 局部重生成与依赖失效
+
+### D-046：通过影响预览 ChangeSet 采用新 Revision
+
+- 创建新的 Narrative、VisualDesign、ReferenceSet、ShotPlan 或其他上游 Revision 后，现有生产链不会隐式切换到新 head。
+- 系统沿精确 DependencyEdge 和 impact path 计算影响，生成 ChangeSet Draft，列出受影响的下游 Draft/Revision、GenerationSpec、QC、主候选选择、Timeline 和导出对象。
+- 用户在影响预览中勾选本次升级范围并确认后，ChangeSet 才冻结精确旧/新 Revision、结构化 diff、选中对象和依赖图 epoch。
+- 首版支持一次批量采用多个受影响对象，也允许只升级部分 Shot；未选对象继续精确引用旧输入。
+- 单用户版本不建立 ChangeProposal 审批角色或权限流；“确认 ChangeSet”就是显式采用动作。
+
+### D-047：自动增量重编译，不自动产生付费生成
+
+- ChangeSet 确认后，系统自动为选中范围执行不含模型调用的确定性增量计算与编译。
+- 需要人工创作确认的 Narrative、Visual 或 Director 变更只创建/更新 Draft；仍须按 D-017 确认后才能形成新的权威 Revision。
+- 已具备全部确认输入的 Shot 自动产生新的 GenerationSpecRevision，并标记旧 Spec、候选、QC 和选择相对当前期望输入的 freshness。
+- 系统不得仅因 ChangeSet 被采用就自动提交图像 Provider、产生新的 GenerationAttempt 或预留生成费用。
+- 用户查看新旧 Spec 和影响范围后，显式选择要重新生成的参考图或 ShotKeyframe。
+
+### D-048：stale 主图保留原选择并显式解决
+
+- 已选 Reference Set 主图或 ShotKeyframe 变为 stale 时，原 SelectionDecision 和精确 AssetVersion 引用继续保留，界面必须醒目标记原因和受影响路径。
+- 系统不得静默取消主图、替换成新候选或删除旧资产。
+- 用户可以显式选择“继续固定旧输入”；该决定把当前生产分支固定在原 Revision 闭包上，并记录所接受的 stale reason/diff hash。
+- 用户也可以采用新 Spec，重新生成或编辑候选并创建新的 SelectionDecision；旧决定和资产继续保留。
+
+### D-049：stale 允许预览，正式导出前必须解决
+
+- Animatic 和其他本地工作预览允许引用尚未解决的 stale 主图，但必须显示全局提示和逐项原因。
+- 正式导出前，每个被 Timeline 引用的 stale 选择都必须有明确解决结果：继续固定旧输入，或升级并替换为新选择。
+- “继续固定旧输入”是有效解决方式，不强制为了消除 stale 而重新生成视觉结果。
+- 未处理的 `stale`、`unknown` 或 `impact_pending` 引用阻止创建正式 ExportRun；不会阻止用户继续编辑或查看工作预览。
+
+### D-050：相邻主图变化只自动重跑局部语义 QC
+
+- Shot 的主 AssetVersion 改选后，该 Shot 以及叙事顺序上前后直接相邻 Shot 的现有 ImageSemanticQC 报告因输入闭包变化而变 stale。
+- 系统在短暂防抖窗口内合并连续改选，选择稳定后自动为上述最多三个 Shot 调度新的 ImageSemanticQC Attempt。
+- 不存在的前/后邻居自然跳过；不会因一个 Shot 改选重跑整集 QC。
+- 此自动行为只调用语义 QC，不自动重生成任何图片；新的 QC Attempt 继续记录模型成本和精确比较上下文。
+
+### D-051：上游变化时在途任务的收尾规则
+
+- 尚在排队、尚未创建 ProviderRequestSnapshot 或可证明尚未外发的旧输入节点转为 `superseded/cancelled`，不得再提交 Provider。
+- 已经外发的 Attempt 不接受热更新。系统继续轮询、接收回调和完成费用/资产对账；Provider 支持可靠取消时，用户可以显式请求取消。
+- 迟到或正常完成的旧输入结果仍经过 staging/finalize 并登记 AssetVersion，但标记其相对当前期望输入为 stale，不会自动成为主候选。
+- 新输入使用新的 NodeRun/GenerationSpec/Attempt 和幂等键；旧任务的完成、失败或取消都不得改变新任务状态。
+
+### D-052：ChangeSet 冻结计划并支持部分成功恢复
+
+- 确认后的 ChangeSet 是不可变执行计划，固定精确输入 Revision、diff hash、选择范围、依赖图 epoch 和每个目标节点的预期动作。
+- 各节点独立记录 `pending/running/succeeded/failed/skipped/superseded` 等执行状态；批次部分失败不回滚已经成功创建的不可变对象。
+- 重试同一 ChangeSet 只执行失败或尚未执行的节点；已成功节点通过稳定幂等键返回原结果，不重复创建 Revision、Spec、Attempt 或费用记录。
+- 用户可以从失败节点恢复，也可以基于剩余范围创建新的 ChangeSet；两者都保留与原计划的关系和执行历史。
+
+## 7. 静态 Animatic 时间线与导出
+
+### D-053：按 ShotPlan 自动创建可编辑 Timeline Draft
+
+- Episode 具备 ShotPlan 顺序和主 ShotKeyframe 选择后，系统按 `proposed_shot_index` 自动创建首条 Timeline Draft。
+- 每个 Shot 默认对应一个视频轨 TimelineClip，精确引用所选 ShotKeyframe AssetVersion，并使用 ShotPlan 的 `preferred_ms` 作为初始时长。
+- 尚无主图的 Shot 仍创建带 Shot ID、预计时长和缺失原因的明显占位 Clip，使整集节奏可以在图像未全部完成前预览。
+- 用户可以在 Timeline Draft 中重排、替换、增删和调整 Clip；这些操作不修改 ShotPlanRevision、SelectionDecision 或源 AssetVersion。
+- ShotPlan 顺序变化不会静默覆盖用户已经编辑的 Timeline Draft，而是通过 ChangeSet/影响提示选择是否重新同步。
+
+### D-054：Clip 时长默认跟随导演建议但允许越界
+
+- TimelineClip 初始时长使用 ShotPlan `preferred_ms`。
+- 时间线拖拽和数值编辑对 `minimum_ms/preferred_ms/maximum_ms` 提供吸附与可视提示。
+- 用户允许把 Clip 调整到导演建议范围以外；系统显示节奏警告，但不禁止保存、预览或冻结。
+- Timeline 时长是剪辑表达，不反向修改 ShotPlanRevision。若用户认为导演时长本身需要改变，必须另行派生 ShotPlan Draft 并确认新 Revision。
+
+### D-055：首版提供有限、确定性的静态画面运动预设
+
+- TimelineClip 支持 `static`、`push_in`、`pull_out`、`pan_left`、`pan_right`、`pan_up` 和 `pan_down`。
+- 初始预设由确定性映射读取 ShotPlan camera intent 产生；同一输入和映射版本必须得到相同参数。
+- 用户可以在 Timeline Draft 中更换预设和调整有限参数；效果只属于 TimelineClip，不修改源图或 ShotPlan。
+- 首版不实现自由关键帧、贝塞尔缓动曲线、旋转或复杂合成画布。
+
+### D-056：硬切默认，只增加简单叠化
+
+- 所有相邻 Clip 边界默认使用 `hard_cut`。
+- 用户可以为单个边界选择 `cross_dissolve` 并调整有限的转场时长。
+- 转场时长必须参与总时长、字幕时间映射和 RenderInputManifest 计算。
+- 首版不提供擦除、推拉、闪白、缩放或插件式转场库。
+
+### D-057：从确认对白生成独立字幕轨
+
+- 系统从 Timeline 所引用 ShotPlan 对应的精确 Narrative Revision 和 dialogue event 自动生成句级 SubtitleCue Draft。
+- 用户可以调整 Cue 入出点、断句和显示样式；字幕轨与画面 Clip 分离，并随 Timeline Draft 保存。
+- 仅改变断句、时间和呈现样式不创建 Narrative Revision。
+- 修改字幕文字并改变对白语义时，UI 必须跳转到 Narrative Draft；确认新 Narrative Revision 后再通过 ChangeSet 同步字幕，不允许字幕轨成为隐式对白权威。
+- 冻结 TimelineVersion 时固定字幕 Cue 内容、时间、样式配置和来源 Narrative Revision。
+
+### D-058：文本与图像阶段使用显式标准静音音轨
+
+- 首版静态 Animatic 不接 TTS、音乐、SFX 或 Suno 等音频 Provider。
+- 渲染时生成覆盖完整时间线时长的标准 AAC 双声道静音轨，使输出 MP4 在播放器和后续音频管线中具有稳定的音轨合同。
+- Timeline 和导出元数据明确标记 `audio_mode=silence_placeholder`，不得让用户误以为音频生产已完成。
+- ShotPlan 的 audio_strategy 和 Narrative 对白引用继续保留，后续真实音频阶段可以替换占位轨而不改变画面资产谱系。
+
+### D-059：预览代理与正式 Animatic 双路径
+
+- Timeline Draft 可以按需生成缓存的低分辨率 Preview Asset；默认 9:16 ProductionProfile 下使用 540×960 H.264，以迭代速度优先。
+- Preview 允许占位 Clip 和按 D-049 尚未解决的 stale 选择，必须在画面或播放器状态中显示提示；任何 Draft 变化都会使旧 Preview cache key 失效。
+- 用户执行“冻结”后创建不可变 TimelineVersion，再创建固定输入闭包和 RenderProfile 的 RenderInputManifest。
+- 默认 9:16 ProductionProfile 下，正式 Animatic 使用 1080×1920 H.264/AAC MP4；若 Project/Episode ProductionProfile 有显式覆盖，预览与正式尺寸按冻结的有效 Profile 等比例派生，而非写死为竖屏。
+- 正式 RenderAttempt 输出 finalize 后的 AssetVersion，并执行独立导出技术 QC；预览缓存不能冒充正式导出资产。
+
+## 8. 记录规则
 
 - 本文只写入用户已经明确确认的决策。
 - 每确认一个新决策，立即更新本文后再继续下一问。
 - 被后续回答替换的建议不得同时保留为有效决定；需要修改对应条目并记录最终选择。
+- 后续不再就默认尺寸、状态名、缓存、重试次数和其他可由既有不变量推导的实现细节逐项询问；由设计与实现过程直接确定并在最终 PRD/实施设计中记录。
+- 只有会改变产品范围、核心用户流程、Provider/架构方向或 MVP 完成边界的选择才继续请求用户确认。
 - 全部决策树对齐后，再将本文整理为完整实施设计并进行一致性审查。
