@@ -323,9 +323,12 @@ defmodule Dramatizer.Timeline do
     end)
   end
 
-  defp motion_from_camera(value)
-       when value in ~w(push_in pull_out pan_left pan_right pan_up pan_down),
-       do: String.to_existing_atom(value)
+  defp motion_from_camera("push_in"), do: :push_in
+  defp motion_from_camera("pull_out"), do: :pull_out
+  defp motion_from_camera("pan_left"), do: :pan_left
+  defp motion_from_camera("pan_right"), do: :pan_right
+  defp motion_from_camera("pan_up"), do: :pan_up
+  defp motion_from_camera("pan_down"), do: :pan_down
 
   defp motion_from_camera(_value), do: :static
 

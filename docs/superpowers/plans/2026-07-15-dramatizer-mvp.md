@@ -434,12 +434,12 @@ Changes.resolve_stale(selection, :pin_old_input | {:replace, asset_id})
 - Test: `app/test/mix/tasks/dramatizer_assets_verify_test.exs`
 - Integration: `app/test/dramatizer/backup_restore_test.exs`
 
-- [ ] Test manifest generation includes referenced asset ID/hash/relative path/size and effective non-secret config, detects missing/corrupt/orphan blobs, and never includes raw API keys.
-- [ ] Implement a write checkpoint, `pg_dump` through the scoped container, AssetStore copy plus manifest, and explicit resume; restore into a clean DB/asset root and verify hashes/references.
-- [ ] Reopen a restored fixture project and prove the same normalized RenderInputManifest/recipe hash can be regenerated.
-- [ ] Add `scripts/dev.ps1` to load root `.env`, start Compose, migrate, and run Phoenix bound to `127.0.0.1`; print only non-secret service URLs/status.
-- [ ] Verify: `Push-Location app; mix test test/mix/tasks/dramatizer_assets_verify_test.exs test/dramatizer/backup_restore_test.exs; Pop-Location`.
-- [ ] Commit: `feat: add local backup restore and consistency tools`.
+- [x] Test manifest generation includes referenced asset ID/hash/relative path/size and effective non-secret config, detects missing/corrupt/orphan blobs, and never includes raw API keys.
+- [x] Implement a write checkpoint, `pg_dump` through the scoped container, AssetStore copy plus manifest, and explicit resume; restore into a clean DB/asset root and verify hashes/references.
+- [x] Reopen a restored fixture project and prove the same normalized RenderInputManifest/recipe hash can be regenerated.
+- [x] Add `scripts/dev.ps1` to load root `.env`, start Compose, migrate, and run Phoenix bound to `127.0.0.1`; print only non-secret service URLs/status.
+- [x] Verify: `Push-Location app; mix test test/mix/tasks/dramatizer_assets_verify_test.exs test/dramatizer/backup_restore_test.exs; Pop-Location`.
+- [x] Commit: `feat: add local backup restore and consistency tools`.
 
 ### Task 15: Close all acceptance tests and browser E2E on Fake
 
