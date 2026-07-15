@@ -2,9 +2,9 @@
 
 **检查点日期：** 2026-07-15
 
-**当前分支：** `main`
+**当前分支：** `feat/dramatizer-mvp`（隔离 worktree：`.worktrees/dramatizer-mvp`）
 
-**工作阶段：** 单用户 MVP PRD 已整理，等待用户审阅；尚未开始应用脚手架或业务代码实现
+**工作阶段：** 单用户 MVP PRD 已确认；正在按冻结实施计划完成应用、验证和本机运行
 
 ## 当前事实
 
@@ -12,7 +12,8 @@
 - 当前方向已变为本机、单用户、无认证/权限/权利安全子系统的功能优先版本。
 - 已确认的增量决策记录在 [`docs/implementation-alignment.md`](docs/implementation-alignment.md)。
 - 对齐记录目前包含 `D-001` 至 `D-059`；最新确认批次是静态 Animatic 时间线、字幕、静音占位与双路径导出。
-- 完整产品需求与实施设计已整理到 [`docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md`](docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md)，当前等待用户审阅。
+- 完整产品需求与实施设计已整理并确认为实施基线：[`docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md`](docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md)。
+- 逐文件、逐测试的执行清单位于 [`docs/superpowers/plans/2026-07-15-dramatizer-mvp.md`](docs/superpowers/plans/2026-07-15-dramatizer-mvp.md)。
 
 ## 已对齐的关键方向
 
@@ -55,10 +56,8 @@ pwsh -NoProfile -File .\docs\ai_short_drama_framework_v0.2\tools\validate_contra
 3. [`docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md`](docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md)；
 4. [`docs/ai_short_drama_framework_v0.2/docs/11_roadmap_and_acceptance.md`](docs/ai_short_drama_framework_v0.2/docs/11_roadmap_and_acceptance.md)。
 
-继续使用分批调查问卷：每批只收敛一个设计分支；收到提交确认后，先更新 `docs/implementation-alignment.md`，再发布下一批问卷。
-
-用户已要求停止逐项确认实现细节。后续由设计过程直接确定可从既有不变量推导的默认值，只对产品范围、核心流程、架构方向和 MVP 边界继续提问。
+PRD 已确认。实现阶段不再发起细节问卷；严格按冻结计划执行。仅在 API Key、管理员权限、外部服务授权或产品范围冲突等必须由用户处理的硬阻塞处暂停。
 
 ## 下一步
 
-用户审阅并确认 MVP PRD。若需要调整，先更新 PRD 与对齐记录并重新做一致性检查；确认后编写详细实施计划，再开始 Phase 0 应用脚手架与合同地基。
+按实施计划逐项 TDD，实现后完成契约、单元、集成、浏览器 E2E、FFmpeg 媒体探测与真实 OpenAI Provider 烟测，最后保持本机系统运行供用户验收。
