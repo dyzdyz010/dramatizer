@@ -19,7 +19,7 @@
 ## 2026-07-15 fresh gate
 
 - `mix.bat format --check-formatted`、`mix.bat compile --warnings-as-errors`、`mix.bat assets.build`：全部通过。
-- `./scripts/test.ps1`：**99 passed，1 excluded，251.5s**；排除项仅为必须显式启用的真实 Provider 标签。
+- `./scripts/test.ps1`：**100 passed，1 excluded，287.8s**；包含 Windows 非默认代码页 Unicode PDF 回归，排除项仅为必须显式启用的真实 Provider 标签。
 - `./scripts/e2e.ps1`：Chromium **1 passed，48.7s**；完成 Project 创建、小说上传、Fake 分析/制作、人工确认、选择、字幕/Timeline 编辑、预览、正式导出、失败恢复、全阶段路由和 MP4/SRT 下载。
 - `./scripts/real-smoke.ps1 -Force`：真实 Provider **2 passed，703.9s**；6 个分析节点、3 张参考图、6 张镜头候选、9 份技术 QC、9 份 Terra 语义 QC、3 个最终 Clip 全部完成。
 - 真实门禁持久化 **33** 个 ProviderRequestSnapshot 和 **33** 个 Provider request ID；usage 为 **116,998 total tokens**（85,734 input、31,264 output，含 18,576 input image tokens 与 990 output image tokens）。API 未返回币种费用，33 条 actual 记录的金额明确为 `unavailable`，不是零。
@@ -27,6 +27,7 @@
 - 首次 fresh 真实运行遇到两次脱敏的传输层 `closed`，系统保留失败 Attempt 并执行一次节点恢复；没有把瞬态错误当成功。官方状态正常后，全新强制运行完整通过。
 - v0.2 合同校验：**8 schemas、7 mapped examples、33 negative cases** 与全部本地 Markdown 链接通过。
 - Python 媒体 Worker：`compileall`、`unknown_command`、`unsupported_protocol` 探针通过；Elixir Worker 超时测试证明调用方不会永久阻塞。
+- 用户实测 PDF 曾因 Windows Python stdout 为 GBK、正文含代码页外 Unicode 而在协议输出阶段失败；Worker JSON 已改为代码页无关的 ASCII escape。回归测试先复现 `UnicodeEncodeError`，修复后 Worker 4/4、Source/Parser/LiveView 17/17、全量 100/100 通过；另用含 `𠮷` 与 emoji 的文本层 PDF 完成真实浏览器上传，显示 37 字、rev 1、已就绪。诊断产生的 DB/AssetStore 数据随后按精确 ID 清理，用户 Project 保留。
 - 本地运维演练：`dramatizer_dev` 完整备份到独立目录，再恢复至 `dramatizer_restore_gate` 与独立 AssetStore；恢复后一致性检查通过，write checkpoint 已释放。
 - `.env` 经 Git 忽略；已对全部 tracked 文件执行当前 OpenAI Key 精确值扫描和 OpenAI/Gemini/私钥常见模式扫描，命中均为 0；`git diff --check` 通过。
 
@@ -110,7 +111,7 @@
 ## 运行交接
 
 - 测试地址：`http://127.0.0.1:4000/`
-- `scripts/dev.ps1` 监督 PID：`38620`；Phoenix/BEAM 监听 PID：`75180`。
+- `scripts/dev.ps1` 监督 PID：`78396`；Phoenix/BEAM 监听 PID：`39516`（Unicode PDF 修复后重启）。
 - 当前 Provider 模式：`fake`（`.env` 未显式设置 `DRAMATIZER_PROVIDER` 时的默认值）；真实 OpenAI 闭环已由上面的 `-Force` 门禁验证。若要让网页实际计费调用 OpenAI，在 `.env` 设置 `DRAMATIZER_PROVIDER=openai` 后重启服务。
 - 标准输出：`output/runtime/dev.stdout.log`；标准错误：`output/runtime/dev.stderr.log`。错误日志当前只含 Docker Compose healthy 状态，没有 Phoenix 异常。
 - 最终直接 HTTP 探测返回 200；Playwright CLI 页面标题为“短剧制作台 · AI 短剧制作台”，可见项目创建和小说导入引导。截图：`output/playwright/persistent-home.png`。
@@ -118,6 +119,6 @@
 
 ## 交接结论
 
-- `feat/dramatizer-mvp` 已推送并设置为跟踪 `origin/feat/dramatizer-mvp`；最终文档提交后再次核对本地和远端对象 ID。
+- `feat/dramatizer-mvp` 已推送并设置为跟踪 `origin/feat/dramatizer-mvp`；本次 PDF 修复提交后再次核对本地和远端对象 ID。
 - worktree 保留，不执行合并或清理，便于用户直接测试和后续迭代。
 - 当前没有未解决的功能、测试或外部配置阻塞。

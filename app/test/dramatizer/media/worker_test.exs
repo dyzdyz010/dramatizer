@@ -27,6 +27,13 @@ defmodule Dramatizer.Media.WorkerTest do
     assert {:error, %{code: "unknown_command"}} = Worker.run(:not_a_command, %{})
   end
 
+  test "worker protocol remains valid for Unicode outside the Windows code page" do
+    assert {:error, %{code: "file_not_found", message: message}} =
+             Worker.run(:probe_image, %{"path" => "missing-😀.png"})
+
+    assert message =~ "😀"
+  end
+
   test "worker returns a stable timeout instead of leaving a caller blocked" do
     runner = fn _executable, _args, _options ->
       Process.sleep(200)

@@ -381,7 +381,7 @@ COMMANDS = {
 
 
 def respond(payload: dict[str, Any]) -> None:
-    print(json.dumps(payload, ensure_ascii=False, separators=(",", ":")))
+    print(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
 
 
 def main() -> None:
