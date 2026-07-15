@@ -38,4 +38,16 @@ defmodule Dramatizer.CostsTest do
     assert projection.reserved_micros == 0
     assert projection.actual_micros == 650
   end
+
+  test "a project budget can return to unlimited while cost tracking remains" do
+    assert {:ok, project} = Projects.create_project(%{name: "无限预算测试"})
+    assert {:ok, limited} = Costs.set_budget(project, 1_000)
+    assert limited.limit_micros == 1_000
+
+    assert {:ok, unlimited} = Costs.clear_budget_limit(project)
+    assert unlimited.limit_micros == nil
+
+    assert {:ok, reservation} = Costs.reserve(project, 10_000, "unlimited-reservation")
+    assert reservation.amount_micros == 10_000
+  end
 end

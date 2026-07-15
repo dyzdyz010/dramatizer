@@ -67,4 +67,18 @@ defmodule Dramatizer.ProjectsTest do
     assert "must be a positive integer" in errors_on(changeset).params
     refute Projects.model_override(project, :reference_image)
   end
+
+  test "project model override can be removed to restore inheritance" do
+    assert {:ok, project} = Projects.create_project(%{name: "恢复模型继承"})
+
+    assert {:ok, _override} =
+             Projects.put_model_override(project, :shot_keyframe, %{
+               model: "gpt-image-2",
+               params: %{"quality" => "high"}
+             })
+
+    assert Projects.model_override(project, :shot_keyframe)
+    assert :ok = Projects.delete_model_override(project, :shot_keyframe)
+    refute Projects.model_override(project, :shot_keyframe)
+  end
 end

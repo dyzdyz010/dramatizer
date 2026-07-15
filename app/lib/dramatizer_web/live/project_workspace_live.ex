@@ -8,6 +8,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   alias Dramatizer.Assets.AssetVersion
   alias Dramatizer.Changes
   alias Dramatizer.Changes.{ChangeSet, StaleRecord}
+  alias Dramatizer.Costs
   alias Dramatizer.Costs.CostEntry
   alias Dramatizer.Directing
   alias Dramatizer.Directing.Compiler
@@ -36,7 +37,16 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   alias Dramatizer.Visuals
   alias Dramatizer.Workflow
   alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
-  alias DramatizerWeb.Live.Components.{CandidateGallery, RunPanel, StageNav, TimelineEditor}
+  alias DramatizerWeb.Forms.ModelOverrideForm
+
+  alias DramatizerWeb.Live.Components.{
+    CandidateGallery,
+    ProjectSettings,
+    ProviderStatus,
+    RunPanel,
+    StageNav,
+    TimelineEditor
+  }
 
   @stages ~w(source analysis episodes visuals shots timeline runs)a
   @image_extensions ~w(.png .jpg .jpeg .webp)
@@ -104,21 +114,41 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
   def handle_event(
         "put-model-override",
-        %{"model_override" => %{"task_type" => task_type, "model" => model, "params" => params}},
+        %{"_action" => "delete", "model_override" => %{"task_type" => task_type}},
+        socket
+      ) do
+    result =
+      with {:ok, task} <- model_task_type(task_type) do
+        Projects.delete_model_override(socket.assigns.project, task)
+      end
+
+    {:noreply, result_flash(socket, result, "项目模型覆盖已清除，已恢复继承。") |> load_workspace()}
+  end
+
+  def handle_event(
+        "put-model-override",
+        %{"model_override" => %{"task_type" => task_type} = params},
         socket
       ) do
     result =
       with {:ok, task} <- model_task_type(task_type),
-           {:ok, decoded} when is_map(decoded) <- Jason.decode(params) do
-        Projects.put_model_override(socket.assigns.project, task, %{
-          model: blank_to_nil(model),
-          params: decoded
-        })
+           {:ok, attrs} <- ModelOverrideForm.cast(task, params) do
+        Projects.put_model_override(socket.assigns.project, task, attrs)
       else
         _ -> {:error, :invalid_model_override}
       end
 
     {:noreply, result_flash(socket, result, "项目模型覆盖已保存。") |> load_workspace()}
+  end
+
+  def handle_event("update-budget", %{"budget" => %{"limit_units" => value}}, socket) do
+    result =
+      case String.trim(value) do
+        "" -> Costs.clear_budget_limit(socket.assigns.project)
+        amount -> parse_budget_micros(amount, socket.assigns.project)
+      end
+
+    {:noreply, result_flash(socket, result, "项目预算已更新。") |> load_workspace()}
   end
 
   def handle_event(
@@ -668,6 +698,12 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
             </form>
           </div>
           <div class="project-header__status">
+            <ProviderStatus.provider_status
+              mode={@provider_mode}
+              credential_available={@credential_available}
+              text_model={@text_model}
+              image_model={@image_model}
+            />
             <span>当前阶段</span>
             <strong>{stage_title(@stage)}</strong>
             <.state_badge state={@state} />
@@ -911,68 +947,12 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           </section>
 
           <section :if={@stage == :runs} class="workspace-panel">
-            <section class="settings-grid" aria-labelledby="project-settings-title">
-              <div class="section-heading compact">
-                <div>
-                  <p class="eyebrow">PROJECT SETTINGS</p>
-                  <h2 id="project-settings-title">项目配置覆盖</h2>
-                </div>
-              </div>
-
-              <form
-                id="production-profile-form"
-                phx-submit="update-production-profile"
-                class="structured-form"
-              >
-                <h3>ProductionProfile</h3>
-                <div class="settings-fields">
-                  <label :for={field <- production_profile_fields()}>
-                    <span>{field}</span>
-                    <input type="number" min="1" name={"profile[#{field}]"} value={@profile[field]} />
-                  </label>
-                </div>
-                <button type="submit" class="btn btn-soft">保存项目规格</button>
-              </form>
-
-              <form id="model-override-form" phx-submit="put-model-override" class="structured-form">
-                <h3>模型项目覆盖</h3>
-                <label>
-                  <span>任务类型</span>
-                  <select name="model_override[task_type]">
-                    <option :for={task <- model_task_types()} value={task}>{task}</option>
-                  </select>
-                </label>
-                <label>
-                  <span>模型（留空继承系统值）</span>
-                  <input type="text" name="model_override[model]" placeholder="gpt-5.6-terra" />
-                </label>
-                <label>
-                  <span>参数 JSON</span>
-                  <textarea name="model_override[params]" rows="5">{"{}"}</textarea>
-                </label>
-                <button type="submit" class="btn btn-soft">保存模型覆盖</button>
-              </form>
-
-              <form
-                id="prompt-appendix-form"
-                phx-submit="create-prompt-appendix"
-                class="structured-form"
-              >
-                <h3>用户可编辑 PromptAppendix</h3>
-                <p>核心 Prompt 由系统隐藏并版本化；这里只追加当前任务的项目规则。</p>
-                <label>
-                  <span>任务类型</span>
-                  <select name="prompt_appendix[task_type]">
-                    <option :for={task <- prompt_task_types()} value={task}>{task}</option>
-                  </select>
-                </label>
-                <label>
-                  <span>Appendix 内容</span>
-                  <textarea name="prompt_appendix[body]" rows="6" required></textarea>
-                </label>
-                <button type="submit" class="btn btn-soft">保存新 Appendix Revision</button>
-              </form>
-            </section>
+            <ProjectSettings.project_settings
+              profile={@profile}
+              budget={@budget}
+              model_task_types={@model_task_types}
+              prompt_task_types={@prompt_task_types}
+            />
             <div
               :if={Application.fetch_env!(:dramatizer, :provider_mode) == :fake}
               class="fake-controls"
@@ -1230,10 +1210,21 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       })
 
     stage = Map.get(socket.assigns, :stage, socket.assigns.live_action || :source)
+    provider_mode = Application.fetch_env!(:dramatizer, :provider_mode)
+    defaults = Application.fetch_env!(:dramatizer, :model_defaults)
+    text_config = Map.fetch!(defaults, :people_relations)
+    image_config = Map.fetch!(defaults, :reference_image)
 
     socket
     |> assign(:stage, stage)
     |> assign(:profile, Projects.effective_profile(socket.assigns.project))
+    |> assign(:budget, Costs.get_budget(socket.assigns.project))
+    |> assign(:provider_mode, provider_mode)
+    |> assign(:credential_available, credential_available?(text_config.credential_ref))
+    |> assign(:text_model, text_config.model)
+    |> assign(:image_model, image_config.model)
+    |> assign(:model_task_types, model_task_types())
+    |> assign(:prompt_task_types, prompt_task_types())
     |> assign(:state, Map.fetch!(stage_states, stage))
     |> assign(:stage_states, stage_states)
     |> assign(:source_revisions, source_revisions)
@@ -1722,10 +1713,6 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp parse_transition("cross_dissolve"), do: {:ok, :cross_dissolve}
   defp parse_transition(_value), do: {:error, :invalid_transition}
 
-  defp production_profile_fields do
-    ~w(aspect_width aspect_height duration_min_seconds duration_max_seconds shot_min shot_max preview_width preview_height formal_width formal_height)a
-  end
-
   defp model_task_types do
     :dramatizer
     |> Application.fetch_env!(:model_defaults)
@@ -1748,10 +1735,26 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     end)
   end
 
-  defp blank_to_nil(value) when is_binary(value) do
-    case String.trim(value) do
-      "" -> nil
-      trimmed -> trimmed
+  defp parse_budget_micros(value, project) do
+    case Decimal.parse(value) do
+      {decimal, ""} ->
+        micros = decimal |> Decimal.mult(1_000_000) |> Decimal.round(0) |> Decimal.to_integer()
+
+        if micros >= 0 do
+          Costs.set_budget(project, micros)
+        else
+          {:error, :invalid_budget}
+        end
+
+      _ ->
+        {:error, :invalid_budget}
+    end
+  end
+
+  defp credential_available?(reference) do
+    case System.get_env(reference) do
+      value when is_binary(value) -> String.trim(value) != ""
+      _ -> false
     end
   end
 

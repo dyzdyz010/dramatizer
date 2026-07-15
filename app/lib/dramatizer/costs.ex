@@ -18,6 +18,15 @@ defmodule Dramatizer.Costs do
     |> Repo.update()
   end
 
+  def clear_budget_limit(%Project{id: project_id}) do
+    ensure_budget(project_id)
+
+    project_id
+    |> get_budget_for_update()
+    |> Budget.projection_changeset(%{limit_micros: nil})
+    |> Repo.update()
+  end
+
   def get_budget(%Project{id: project_id}) do
     ensure_budget(project_id)
     Repo.get_by!(Budget, project_id: project_id)

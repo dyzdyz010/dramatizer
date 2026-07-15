@@ -87,6 +87,16 @@ defmodule Dramatizer.Projects do
     Repo.get_by(ModelOverride, project_id: project_id, task_type: Atom.to_string(task_type))
   end
 
+  def delete_model_override(%Project{id: project_id}, task_type) do
+    Repo.delete_all(
+      from override in ModelOverride,
+        where:
+          override.project_id == ^project_id and override.task_type == ^Atom.to_string(task_type)
+    )
+
+    :ok
+  end
+
   def create_prompt_appendix(%Project{id: project_id}, task_type, body) when is_binary(body) do
     with :ok <- Catalog.validate_task_type(task_type) do
       Repo.transaction(fn ->

@@ -101,7 +101,9 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
       model_override: %{
         task_type: "shot_keyframe",
         model: "gpt-image-2",
-        params: ~s({"candidate_count":3,"quality":"high"})
+        candidate_count: "3",
+        quality: "high",
+        size: "768x1360"
       }
     )
     |> render_submit()
@@ -149,6 +151,20 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert render(view) =~ "novel.txt"
     assert render(view) =~ "已解析全文"
     assert Repo.get_by!(SourceRevision, project_id: project.id).character_count > 0
+  end
+
+  test "project settings expose the provider and typed model controls without JSON", %{
+    conn: conn,
+    project: project
+  } do
+    {:ok, view, html} = live(conn, "/projects/#{project.id}/runs")
+
+    assert html =~ "当前运行模式"
+    assert has_element?(view, "[data-provider-mode='fake']")
+    refute html =~ "参数 JSON"
+    refute has_element?(view, "textarea[name='model_override[params]']")
+    assert has_element?(view, "select[name='model_override[quality]']")
+    assert has_element?(view, "input[name='budget[limit_units]']")
   end
 
   test "source import cannot report success without a completed upload", %{

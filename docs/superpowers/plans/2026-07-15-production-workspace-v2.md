@@ -45,7 +45,7 @@
 - Produces: `Costs.clear_budget_limit/1` so a blank limit restores the PRD's unlimited-but-recorded mode.
 - Produces: `<ProviderStatus.provider_status mode credential_available model_summary>` and `<ProjectSettings.project_settings ...>`.
 
-- [ ] **Step 1: Write failing form and LiveView tests**
+- [x] **Step 1: Write failing form and LiveView tests**
 
 ```elixir
 test "image settings are cast from business controls without JSON" do
@@ -64,23 +64,23 @@ test "workspace identifies the active provider and exposes no JSON setting input
 end
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `cd app; ../mix.bat test test/dramatizer_web/forms/model_override_form_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: form module missing and old JSON textarea assertion fails.
 
-- [ ] **Step 3: Implement typed casting and status/settings components**
+- [x] **Step 3: Implement typed casting and status/settings components**
 
 Text tasks accept `model` and `reasoning_effort`; image tasks accept `model`, `quality`, `size`, and positive `candidate_count`. Render effective system and Project values, credential reference availability, PromptAppendix revisions, profile units, and “restore inheritance”. Remove settings markup from the runs stage and render it in a settings drawer controlled by `open-settings`/`close-settings` events.
 
-- [ ] **Step 4: Run GREEN and regressions**
+- [x] **Step 4: Run GREEN and regressions**
 
 Run: `cd app; ../mix.bat test test/dramatizer_web/forms/model_override_form_test.exs test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/projects_test.exs test/dramatizer/costs_test.exs test/dramatizer/generation/config_resolver_test.exs`
 
 Expected: all selected tests pass and no user-facing model JSON field exists.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/config/config.exs app/lib/dramatizer/projects.ex app/lib/dramatizer/costs.ex app/lib/dramatizer_web/forms app/lib/dramatizer_web/live/components/provider_status.ex app/lib/dramatizer_web/live/components/project_settings.ex app/lib/dramatizer_web/live/project_workspace_live.ex app/test/dramatizer_web app/test/dramatizer/costs_test.exs
