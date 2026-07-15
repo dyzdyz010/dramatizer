@@ -82,8 +82,19 @@ defmodule DramatizerWeb.Forms.NarrativeDraftForm do
     if errors == %{}, do: {:ok, payload}, else: {:error, errors}
   end
 
+  def add(payload, "beats:" <> scene_id, item),
+    do: update_scene_collection(payload, scene_id, &F.add(&1, "beats", item))
+
   def add(payload, collection, item), do: F.add(payload, collection, item)
+
+  def remove(payload, "beats:" <> scene_id, id),
+    do: update_scene_collection(payload, scene_id, &F.remove(&1, "beats", id))
+
   def remove(payload, collection, id), do: F.remove(payload, collection, id)
+
+  def move(payload, "beats:" <> scene_id, id, direction),
+    do: update_scene_collection(payload, scene_id, &F.move(&1, "beats", id, direction))
+
   def move(payload, collection, id, direction), do: F.move(payload, collection, id, direction)
 
   defp cast_episode(params, current) do
@@ -252,6 +263,14 @@ defmodule DramatizerWeb.Forms.NarrativeDraftForm do
   defp map_list_input(payload, collection, field) do
     Map.update(payload, collection, [], fn items ->
       Enum.map(items, &Map.update(&1, field, "", fn value -> F.text_list_input(value) end))
+    end)
+  end
+
+  defp update_scene_collection(payload, scene_id, updater) do
+    Map.update(F.string_keys(payload), "scenes", [], fn scenes ->
+      Enum.map(scenes, fn scene ->
+        if scene["id"] == scene_id, do: updater.(scene), else: scene
+      end)
     end)
   end
 end

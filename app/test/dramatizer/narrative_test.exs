@@ -3,6 +3,7 @@ defmodule Dramatizer.NarrativeTest do
 
   alias Dramatizer.Analysis.AnalysisSnapshot
   alias Dramatizer.CanonicalJSON
+  alias Dramatizer.Generation.StructuredTextProposal
   alias Dramatizer.Narrative
   alias Dramatizer.Projects
   alias Dramatizer.Repo
@@ -63,6 +64,54 @@ defmodule Dramatizer.NarrativeTest do
     assert {:ok, revision} = Revisions.confirm_draft(edited.id)
     assert revision.kind == :narrative
     assert revision.payload["title"] == "人工修订标题"
+  end
+
+  test "a selected analysis candidate becomes one rich proposal draft idempotently" do
+    assert {:ok, project} = Projects.create_project(%{name: "AI 分集提案"})
+    assert {:ok, run} = Workflow.create_run(project, "fixture", %{}, "proposal-analysis")
+
+    node_results = %{
+      "episode_candidates" => %{
+        "output" => %{
+          "items" => [
+            item("episode:ep1", ["event:e1"])
+            |> put_in(["data", "summary"], "林夏在车站收到旧信。")
+          ]
+        }
+      },
+      "events_timeline" => %{"output" => %{"items" => [item("event:e1")]}}
+    }
+
+    snapshot =
+      %AnalysisSnapshot{}
+      |> AnalysisSnapshot.create_changeset(%{
+        project_id: project.id,
+        workflow_run_id: run.id,
+        source_revision_ids: [],
+        task_snapshot_ids: [],
+        node_results: node_results,
+        content_hash: CanonicalJSON.hash(node_results)
+      })
+      |> Repo.insert!()
+
+    assert {:ok, authority} = Narrative.proposal_authority(snapshot, "episode:ep1")
+
+    assert {:ok, proposal} =
+             StructuredTextProposal.propose(project, :narrative_proposal, authority,
+               provider_mode: :fake
+             )
+
+    assert {:ok, first} =
+             Narrative.create_proposal_draft(project, snapshot, "episode:ep1", proposal.output)
+
+    assert first.payload["schema_version"] == "narrative-draft-v2"
+    assert first.payload["analysis_snapshot_id"] == snapshot.id
+    assert hd(first.payload["scenes"])["beats"] != []
+
+    assert {:ok, same} =
+             Narrative.create_proposal_draft(project, snapshot, "episode:ep1", proposal.output)
+
+    assert same.id == first.id
   end
 
   defp item(id, references \\ []) do

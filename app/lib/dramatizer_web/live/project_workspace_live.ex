@@ -3,7 +3,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
   import Ecto.Query
 
-  alias Dramatizer.Analysis.{AnalysisSnapshot, DAG, Runner}
+  alias Dramatizer.Analysis.AnalysisSnapshot
   alias Dramatizer.Assets
   alias Dramatizer.Assets.AssetVersion
   alias Dramatizer.Changes
@@ -19,9 +19,11 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     ConfigResolver,
     GenerationSpec,
     Orchestrator,
-    ProviderRequestSnapshot
+    ProviderRequestSnapshot,
+    StructuredTextProposal
   }
 
+  alias Dramatizer.Narrative
   alias Dramatizer.Projects
   alias Dramatizer.Prompts.Catalog
   alias Dramatizer.Quality
@@ -37,10 +39,12 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   alias Dramatizer.Visuals
   alias Dramatizer.Workflow
   alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
-  alias DramatizerWeb.Forms.ModelOverrideForm
+  alias DramatizerWeb.Forms.{ModelOverrideForm, NarrativeDraftForm}
 
   alias DramatizerWeb.Live.Components.{
+    AnalysisReview,
     CandidateGallery,
+    NarrativeEditor,
     ProjectSettings,
     ProviderStatus,
     RunPanel,
@@ -192,8 +196,26 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
         results ->
           case Enum.find(results, &match?({:error, _}, &1)) do
-            nil -> socket |> put_flash(:info, "原著已按全文解析并落盘。") |> load_workspace()
-            {:error, reason} -> put_flash(socket, :error, human_error(reason))
+            nil ->
+              revisions = source_revisions(socket.assigns.project.id)
+
+              case Narrative.ensure_analysis(
+                     socket.assigns.project,
+                     Enum.map(revisions, & &1.id)
+                   ) do
+                {:ok, _snapshot} ->
+                  socket
+                  |> put_flash(:info, "原著已解析，整本分析提案已生成。")
+                  |> push_patch(to: ~p"/projects/#{socket.assigns.project.id}/analysis")
+
+                {:error, reason} ->
+                  socket
+                  |> put_flash(:error, human_error(reason))
+                  |> load_workspace()
+              end
+
+            {:error, reason} ->
+              put_flash(socket, :error, human_error(reason))
           end
       end
 
@@ -232,19 +254,11 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     revision_ids = Enum.map(socket.assigns.source_revisions, & &1.id)
 
     socket =
-      case DAG.start(socket.assigns.project, revision_ids) do
-        {:ok, run, _nodes} ->
-          mode = Application.fetch_env!(:dramatizer, :provider_mode)
-
-          case Runner.run(socket.assigns.project, run, mode) do
-            {:ok, _snapshot} ->
-              socket
-              |> put_flash(:info, "全文分析 DAG 已完成并冻结 AnalysisSnapshot。")
-              |> load_workspace()
-
-            {:error, reason} ->
-              socket |> put_flash(:error, human_error(reason)) |> load_workspace()
-          end
+      case Narrative.ensure_analysis(socket.assigns.project, revision_ids) do
+        {:ok, _snapshot} ->
+          socket
+          |> put_flash(:info, "全文分析 DAG 已完成并冻结 AnalysisSnapshot。")
+          |> load_workspace()
 
         {:error, reason} ->
           put_flash(socket, :error, human_error(reason))
@@ -263,12 +277,73 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
     result =
       if snapshot do
-        Dramatizer.Narrative.materialize_episode(socket.assigns.project, snapshot, candidate_id)
+        with {:ok, authority} <- Narrative.proposal_authority(snapshot, candidate_id),
+             {:ok, proposal} <-
+               StructuredTextProposal.propose(
+                 socket.assigns.project,
+                 :narrative_proposal,
+                 authority
+               ) do
+          Narrative.create_proposal_draft(
+            socket.assigns.project,
+            snapshot,
+            candidate_id,
+            proposal.output
+          )
+        end
       else
         {:error, :analysis_snapshot_required}
       end
 
     {:noreply, result_flash(socket, result, "已创建可编辑 Narrative 草稿。") |> load_workspace()}
+  end
+
+  def handle_event("save-narrative-draft", %{"id" => id, "narrative" => params}, socket) do
+    draft = Repo.get!(Draft, id)
+
+    result =
+      with :narrative <- draft.kind,
+           {:ok, payload} <- NarrativeDraftForm.cast(params, draft.payload) do
+        Revisions.replace_draft_payload(draft, payload)
+      else
+        {:error, errors} -> {:error, {:form_validation, errors}}
+        _other -> {:error, :invalid_narrative_draft}
+      end
+
+    {:noreply, result_flash(socket, result, "Narrative Draft 已保存。") |> load_workspace()}
+  end
+
+  def handle_event("add-narrative-item", %{"id" => id, "collection" => collection}, socket) do
+    mutate_narrative_draft(socket, id, fn payload ->
+      NarrativeDraftForm.add(payload, collection, narrative_item(collection))
+    end)
+  end
+
+  def handle_event(
+        "remove-narrative-item",
+        %{"id" => id, "collection" => collection, "item-id" => item_id},
+        socket
+      ) do
+    mutate_narrative_draft(socket, id, fn payload ->
+      NarrativeDraftForm.remove(payload, collection, item_id)
+    end)
+  end
+
+  def handle_event(
+        "move-narrative-item",
+        %{
+          "id" => id,
+          "collection" => collection,
+          "item-id" => item_id,
+          "direction" => direction
+        },
+        socket
+      ) do
+    parsed_direction = if direction == "up", do: :up, else: :down
+
+    mutate_narrative_draft(socket, id, fn payload ->
+      NarrativeDraftForm.move(payload, collection, item_id, parsed_direction)
+    end)
   end
 
   def handle_event("update-draft", %{"id" => id, "draft" => %{"payload" => payload}}, socket) do
@@ -792,6 +867,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                 </button>
               </article>
             </div>
+            <AnalysisReview.analysis_review snapshot={List.first(@analysis_snapshots)} />
           </section>
 
           <section :if={@stage == :episodes} class="workspace-panel" data-human-gate>
@@ -812,7 +888,10 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                 </button>
               </article>
             </div>
-            <.draft_editor :for={draft <- drafts_for(@drafts, :narrative)} draft={draft} />
+            <NarrativeEditor.narrative_editor
+              :for={draft <- drafts_for(@drafts, :narrative)}
+              draft={draft}
+            />
             <div
               :if={@episode_candidates == [] and drafts_for(@drafts, :narrative) == []}
               class="empty-panel compact"
@@ -1080,15 +1159,98 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     """
   end
 
+  defp mutate_narrative_draft(socket, draft_id, mutation) do
+    draft = Repo.get!(Draft, draft_id)
+    changed = mutation.(draft.payload)
+
+    result =
+      with :narrative <- draft.kind,
+           {:ok, payload} <-
+             NarrativeDraftForm.cast(NarrativeDraftForm.from_payload(changed), draft.payload) do
+        Revisions.replace_draft_payload(draft, payload)
+      else
+        {:error, errors} -> {:error, {:form_validation, errors}}
+        _other -> {:error, :invalid_narrative_draft}
+      end
+
+    {:noreply, result_flash(socket, result, "Narrative Draft 已更新。") |> load_workspace()}
+  end
+
+  defp narrative_item("scenes") do
+    %{
+      "id" => generated_id("SC"),
+      "title" => "新场景",
+      "location_ref" => "location:unspecified",
+      "time_of_day" => "未指定",
+      "goal" => "待补充",
+      "summary" => "待补充",
+      "source_semantics" => "creative",
+      "beats" => []
+    }
+  end
+
+  defp narrative_item("beats:" <> _scene_id) do
+    %{
+      "id" => generated_id("BT"),
+      "title" => "新节拍",
+      "goal" => "待补充",
+      "summary" => "待补充",
+      "story_event_ids" => []
+    }
+  end
+
+  defp narrative_item("story_events") do
+    %{
+      "id" => generated_id("EV"),
+      "name" => "新事件",
+      "description" => "待补充",
+      "subject_refs" => [],
+      "source_semantics" => "creative"
+    }
+  end
+
+  defp narrative_item("dialogue_events") do
+    %{
+      "id" => generated_id("DL"),
+      "speaker_ref" => "character:unspecified",
+      "text" => "待补充",
+      "scene_id" => "",
+      "beat_id" => "",
+      "story_event_id" => "",
+      "source_semantics" => "creative",
+      "start_ms" => 0,
+      "end_ms" => 1_000
+    }
+  end
+
+  defp narrative_item("dependencies") do
+    %{
+      "id" => generated_id("DP"),
+      "kind" => "other",
+      "name" => "新依赖",
+      "source_semantics" => "creative"
+    }
+  end
+
+  defp narrative_item("conflicts") do
+    %{"id" => generated_id("CF"), "description" => "待决项", "severity" => "warning"}
+  end
+
+  defp narrative_item(_collection), do: %{"id" => generated_id("ITEM")}
+
+  defp generated_id(prefix), do: "#{prefix}-#{String.slice(Ecto.UUID.generate(), 0, 8)}"
+
+  defp source_revisions(project_id) do
+    Repo.all(
+      from revision in SourceRevision,
+        where: revision.project_id == ^project_id,
+        order_by: [asc: revision.inserted_at]
+    )
+  end
+
   defp load_workspace(socket) do
     project_id = socket.assigns.project.id
-
-    source_revisions =
-      Repo.all(
-        from revision in SourceRevision,
-          where: revision.project_id == ^project_id,
-          order_by: [asc: revision.inserted_at]
-      )
+    source_revisions = source_revisions(project_id)
 
     runs =
       Repo.all(

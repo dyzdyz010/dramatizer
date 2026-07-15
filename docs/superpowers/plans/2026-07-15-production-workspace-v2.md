@@ -222,7 +222,7 @@ git commit -m "feat: add versioned authority forms"
 - Import success calls the existing persisted DAG/Runner and navigates to `/analysis`.
 - Candidate selection calls StructuredTextProposal and then creates one Narrative Draft.
 
-- [ ] **Step 1: Write failing automatic-flow and no-JSON tests**
+- [x] **Step 1: Write failing automatic-flow and no-JSON tests**
 
 ```elixir
 test "upload automatically analyzes and selecting a candidate creates a rich form draft", %{conn: conn, project: project} do
@@ -239,23 +239,23 @@ test "upload automatically analyzes and selecting a candidate creates a rich for
 end
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `cd app; mix.bat test test/dramatizer/narrative_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: upload does not auto-analyze and the old JSON editor is rendered.
 
-- [ ] **Step 3: Implement analysis review and Narrative editor**
+- [x] **Step 3: Implement analysis review and Narrative editor**
 
 Render people/relations, places/props/world, events/timeline, merge, candidates, and conflicts as business cards with provenance chips and source-locator Inspector. NarrativeEditor renders episode, Profile override, Scene, Beat, StoryEvent, DialogueEvent, dependencies, conflict items, add/remove/reorder controls, autosave status, and confirm/derive actions.
 
-- [ ] **Step 4: Run GREEN and source-analysis regressions**
+- [x] **Step 4: Run GREEN and source-analysis regressions**
 
 Run: `cd app; mix.bat test test/dramatizer/narrative_test.exs test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/acceptance/source_analysis_test.exs`
 
 Expected: all pass and source import creates or reuses one AnalysisSnapshot for the exact revision set.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/lib/dramatizer/narrative.ex app/lib/dramatizer_web/live/components/analysis_review.ex app/lib/dramatizer_web/live/components/narrative_editor.ex app/lib/dramatizer_web/live/project_workspace_live.ex app/test/dramatizer/narrative_test.exs app/test/dramatizer_web/live/project_workspace_live_test.exs

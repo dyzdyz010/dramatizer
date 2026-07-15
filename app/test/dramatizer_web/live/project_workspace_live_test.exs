@@ -5,6 +5,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
   import Ecto.Query
 
   alias Dramatizer.Assets
+  alias Dramatizer.Analysis.AnalysisSnapshot
   alias Dramatizer.Projects
   alias Dramatizer.Assets.AssetVersion
   alias Dramatizer.Costs
@@ -134,7 +135,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert render(runs) =~ "网页制作流·修订"
   end
 
-  test "direct LiveView text upload is consumed into the source parser", %{
+  test "direct LiveView text upload is parsed, automatically analyzed, and routed to review", %{
     conn: conn,
     project: project
   } do
@@ -148,9 +149,10 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert render_upload(upload, "novel.txt") =~ "novel.txt"
     view |> form("#source-upload-form") |> render_submit()
 
-    assert render(view) =~ "novel.txt"
-    assert render(view) =~ "已解析全文"
+    assert_patch(view, "/projects/#{project.id}/analysis")
+    assert render(view) =~ "分析审阅"
     assert Repo.get_by!(SourceRevision, project_id: project.id).character_count > 0
+    assert Repo.get_by!(AnalysisSnapshot, project_id: project.id)
   end
 
   test "project settings expose the provider and typed model controls without JSON", %{
@@ -191,7 +193,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     end
   end
 
-  test "fake full-text analysis completes the persisted DAG and exposes episode candidates", %{
+  test "automatic full-text analysis exposes candidates and creates a rich Narrative form", %{
     conn: conn,
     project: project
   } do
@@ -206,13 +208,23 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     source_view |> form("#source-upload-form") |> render_submit()
 
     {:ok, analysis, _html} = live(conn, "/projects/#{project.id}/analysis")
-    analysis |> element("button", "启动全文分析") |> render_click()
     assert has_element?(analysis, "[data-stage='analysis'][data-state='ready']")
     assert has_element?(analysis, ".dag-node [data-state='ready']")
+    assert has_element?(analysis, "[data-analysis-review]")
+    assert render(analysis) =~ "人物与关系"
+    assert render(analysis) =~ "地点、道具与世界"
 
     {:ok, episodes, html} = live(conn, "/projects/#{project.id}/episodes")
     assert html =~ "雨夜来信"
     assert has_element?(episodes, "button[phx-click='select-episode']")
+
+    episodes |> element("button[phx-click='select-episode']") |> render_click()
+    html = render(episodes)
+    assert html =~ "分集概览"
+    assert html =~ "Scene"
+    assert has_element?(episodes, "form[phx-submit='save-narrative-draft']")
+    refute html =~ "结构化内容"
+    refute has_element?(episodes, "textarea[name='draft[payload]']")
   end
 
   test "browser-visible Fake fault control resumes without duplicate result or cost", %{
