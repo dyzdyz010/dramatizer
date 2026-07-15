@@ -97,8 +97,8 @@ defmodule Dramatizer.Directing.CompilerTest do
     assert length(first.payload["specs"]) == 2
 
     first_spec = hd(first.payload["specs"])["payload"]
-    assert first_spec["width"] == 1024
-    assert first_spec["height"] == 1536
+    assert first_spec["width"] == 768
+    assert first_spec["height"] == 1360
 
     frozen = first.payload["frozen_inputs"]
 
@@ -109,7 +109,7 @@ defmodule Dramatizer.Directing.CompilerTest do
     assert frozen["revisions"]["shot_plan"]["id"] == shot_plan.id
     assert frozen["production_profile"]["aspect_width"] == 9
     assert frozen["production_profile"]["formal_width"] == 1080
-    assert frozen["image_generation"]["size"] == "1024x1536"
+    assert frozen["image_generation"]["size"] == "768x1360"
     assert frozen["prompt_snapshot_ids"] == opts[:prompt_snapshot_ids]
     assert frozen["compiler_version"] == "directing-compiler-v1"
     assert frozen["template_version"] == "v1"
