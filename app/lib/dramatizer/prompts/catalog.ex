@@ -2,7 +2,7 @@ defmodule Dramatizer.Prompts.Catalog do
   @moduledoc "Versioned, code-owned CorePrompt catalog."
 
   @version "v1"
-  @tasks ~w(people_relations places_props_world events_timeline entity_merge episode_candidates conflict_check directing_proposal image_prompt structured_repair semantic_qc)a
+  @tasks ~w(people_relations places_props_world events_timeline entity_merge episode_candidates conflict_check narrative_proposal visual_design_proposal directing_proposal image_prompt structured_repair semantic_qc)a
 
   def version, do: @version
   def task_types, do: @tasks

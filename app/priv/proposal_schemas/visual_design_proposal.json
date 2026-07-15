@@ -1,0 +1,50 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "objects"],
+  "properties": {
+    "schema_version": {"type": "string", "enum": ["visual-design-draft-v2"]},
+    "objects": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "name", "narrative_role", "importance", "recurring", "key", "reference_required", "source_semantics", "description", "palette", "materials", "must_show", "must_not_show", "variants"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "type": {"type": "string", "enum": ["character", "location", "prop"]},
+          "name": {"type": "string", "minLength": 1},
+          "narrative_role": {"type": "string"},
+          "importance": {"type": "string", "enum": ["background", "supporting", "key"]},
+          "recurring": {"type": "boolean"},
+          "key": {"type": "boolean"},
+          "reference_required": {"type": "boolean"},
+          "source_semantics": {"type": "string", "enum": ["source_grounded", "inferred", "creative"]},
+          "description": {"type": "string", "minLength": 1},
+          "palette": {"type": "array", "items": {"type": "string"}},
+          "materials": {"type": "array", "items": {"type": "string"}},
+          "must_show": {"type": "array", "items": {"type": "string"}},
+          "must_not_show": {"type": "array", "items": {"type": "string"}},
+          "variants": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "name", "state_description", "wardrobe", "lighting", "required_slots"],
+              "properties": {
+                "id": {"type": "string", "minLength": 1},
+                "name": {"type": "string", "minLength": 1},
+                "state_description": {"type": "string"},
+                "wardrobe": {"type": "string"},
+                "lighting": {"type": "string"},
+                "required_slots": {"type": "array", "items": {"type": "string"}}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -66,6 +66,8 @@ config :dramatizer, :model_defaults, %{
   entity_merge: text_model,
   episode_candidates: text_model,
   conflict_check: text_model,
+  narrative_proposal: text_model,
+  visual_design_proposal: text_model,
   directing_proposal: text_model,
   image_prompt: text_model,
   structured_repair: text_model,

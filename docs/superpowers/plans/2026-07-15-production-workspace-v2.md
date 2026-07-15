@@ -66,7 +66,7 @@ end
 
 - [x] **Step 2: Run RED**
 
-Run: `cd app; ../mix.bat test test/dramatizer_web/forms/model_override_form_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
+Run: `cd app; mix.bat test test/dramatizer_web/forms/model_override_form_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: form module missing and old JSON textarea assertion fails.
 
@@ -76,7 +76,7 @@ Text tasks accept `model` and `reasoning_effort`; image tasks accept `model`, `q
 
 - [x] **Step 4: Run GREEN and regressions**
 
-Run: `cd app; ../mix.bat test test/dramatizer_web/forms/model_override_form_test.exs test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/projects_test.exs test/dramatizer/costs_test.exs test/dramatizer/generation/config_resolver_test.exs`
+Run: `cd app; mix.bat test test/dramatizer_web/forms/model_override_form_test.exs test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/projects_test.exs test/dramatizer/costs_test.exs test/dramatizer/generation/config_resolver_test.exs`
 
 Expected: all selected tests pass and no user-facing model JSON field exists.
 
@@ -107,7 +107,7 @@ git commit -m "feat: add typed provider settings"
 - Returns: `{:ok, %{output: map(), request_snapshot: ProviderRequestSnapshot.t(), attempt: Attempt.t()}}`.
 - Reuses: `Generation.create_spec/2`, `Generation.prepare_attempt/4`, Costs reserve/settle, OpenAIResponses, CorePrompt/PromptAppendix.
 
-- [ ] **Step 1: Write failing persistence, Fake, OpenAI-submitter, and invalid-output tests**
+- [x] **Step 1: Write failing persistence, Fake, OpenAI-submitter, and invalid-output tests**
 
 ```elixir
 test "fake narrative proposal persists the same request and attempt contract", %{project: project} do
@@ -124,23 +124,23 @@ test "invalid structured output fails the attempt instead of guessing fields", %
 end
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
-Run: `cd app; ../mix.bat test test/dramatizer/generation/structured_text_proposal_test.exs test/dramatizer/prompts/composer_test.exs`
+Run: `cd app; mix.bat test test/dramatizer/generation/structured_text_proposal_test.exs test/dramatizer/prompts/composer_test.exs`
 
 Expected: new modules, schemas, and prompt tasks are absent.
 
-- [ ] **Step 3: Implement the runner and strict schemas**
+- [x] **Step 3: Implement the runner and strict schemas**
 
 The runner composes the task prompt from canonical Chinese authority, prepares a non-formal `text_proposal` GenerationSpec, freezes schema/prompt/config hashes, reserves cost for OpenAI, validates returned output with the selected JSON Schema, records usage/request IDs, and reuses a succeeded Attempt for identical input. Fake output must contain rich Scene/Beat/Event, VisualVariant, and Shot fields sufficient for the browser E2E.
 
-- [ ] **Step 4: Run GREEN and adapter regressions**
+- [x] **Step 4: Run GREEN and adapter regressions**
 
-Run: `cd app; ../mix.bat test test/dramatizer/generation/structured_text_proposal_test.exs test/dramatizer/generation/openai_responses_test.exs test/dramatizer/generation/image_prompt_proposal_test.exs test/dramatizer/prompts/composer_test.exs`
+Run: `cd app; mix.bat test test/dramatizer/generation/structured_text_proposal_test.exs test/dramatizer/generation/openai_responses_test.exs test/dramatizer/generation/image_prompt_proposal_test.exs test/dramatizer/prompts/composer_test.exs`
 
 Expected: all selected tests pass; invalid fields are rejected, not removed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/config/config.exs app/lib/dramatizer/generation app/lib/dramatizer/prompts app/priv/proposal_schemas app/priv/prompts app/test/dramatizer/generation app/test/dramatizer/prompts
@@ -186,7 +186,7 @@ end
 
 - [ ] **Step 2: Run RED**
 
-Run: `cd app; ../mix.bat test test/dramatizer_web/forms/draft_forms_test.exs test/dramatizer/revisions_test.exs test/dramatizer/visuals_test.exs`
+Run: `cd app; mix.bat test test/dramatizer_web/forms/draft_forms_test.exs test/dramatizer/revisions_test.exs test/dramatizer/visuals_test.exs`
 
 Expected: adapters and replace command are missing.
 
@@ -196,7 +196,7 @@ Normalize indexed maps in numeric order; generate stable IDs only for genuinely 
 
 - [ ] **Step 4: Run GREEN and compiler/timeline regressions**
 
-Run: `cd app; ../mix.bat test test/dramatizer_web/forms/draft_forms_test.exs test/dramatizer/revisions_test.exs test/dramatizer/visuals_test.exs test/dramatizer/directing/compiler_test.exs test/dramatizer/timeline_test.exs`
+Run: `cd app; mix.bat test test/dramatizer_web/forms/draft_forms_test.exs test/dramatizer/revisions_test.exs test/dramatizer/visuals_test.exs test/dramatizer/directing/compiler_test.exs test/dramatizer/timeline_test.exs`
 
 Expected: all selected tests pass and legacy payload extensions survive form save/confirm.
 
@@ -241,7 +241,7 @@ end
 
 - [ ] **Step 2: Run RED**
 
-Run: `cd app; ../mix.bat test test/dramatizer/narrative_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
+Run: `cd app; mix.bat test test/dramatizer/narrative_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: upload does not auto-analyze and the old JSON editor is rendered.
 
@@ -251,7 +251,7 @@ Render people/relations, places/props/world, events/timeline, merge, candidates,
 
 - [ ] **Step 4: Run GREEN and source-analysis regressions**
 
-Run: `cd app; ../mix.bat test test/dramatizer/narrative_test.exs test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/acceptance/source_analysis_test.exs`
+Run: `cd app; mix.bat test test/dramatizer/narrative_test.exs test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/acceptance/source_analysis_test.exs`
 
 Expected: all pass and source import creates or reuses one AnalysisSnapshot for the exact revision set.
 
@@ -299,7 +299,7 @@ end
 
 - [ ] **Step 2: Run RED**
 
-Run: `cd app; ../mix.bat test test/dramatizer/visuals_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
+Run: `cd app; mix.bat test test/dramatizer/visuals_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: explicit reference flag is overwritten and the JSON visual form still appears.
 
@@ -309,7 +309,7 @@ Use StructuredTextProposal with confirmed Narrative authority. Render character/
 
 - [ ] **Step 4: Run GREEN and reference workflow regressions**
 
-Run: `cd app; ../mix.bat test test/dramatizer/visuals_test.exs test/dramatizer/visuals/reference_workflow_test.exs test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/acceptance/assets_changes_test.exs`
+Run: `cd app; mix.bat test test/dramatizer/visuals_test.exs test/dramatizer/visuals/reference_workflow_test.exs test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/acceptance/assets_changes_test.exs`
 
 Expected: all selected tests pass and formal selections still require confirmed VisualDesign.
 
@@ -362,7 +362,7 @@ end
 
 - [ ] **Step 2: Run RED**
 
-Run: `cd app; ../mix.bat test test/dramatizer/directing/compiler_test.exs test/dramatizer_web/forms/draft_forms_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
+Run: `cd app; mix.bat test test/dramatizer/directing/compiler_test.exs test/dramatizer_web/forms/draft_forms_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: nested camera/constraints are not compiled and the JSON form remains.
 
@@ -372,7 +372,7 @@ Render compact/common Shot controls with expandable full director parameters. No
 
 - [ ] **Step 4: Run GREEN and directing/generation regressions**
 
-Run: `cd app; ../mix.bat test test/dramatizer/directing/compiler_test.exs test/dramatizer/generation/orchestrator_invariants_test.exs test/dramatizer/timeline_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
+Run: `cd app; mix.bat test test/dramatizer/directing/compiler_test.exs test/dramatizer/generation/orchestrator_invariants_test.exs test/dramatizer/timeline_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: all pass with deterministic v1 and v2 compilation.
 
@@ -424,7 +424,7 @@ end
 
 - [ ] **Step 2: Run RED**
 
-Run: `cd app; ../mix.bat test test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/changes_test.exs test/dramatizer/timeline_test.exs`
+Run: `cd app; mix.bat test test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/changes_test.exs test/dramatizer/timeline_test.exs`
 
 Expected: product labels, grouped evidence, and dual render-path elements are absent.
 
@@ -434,7 +434,7 @@ Keep all existing business commands, but replace raw IDs and generic rows with b
 
 - [ ] **Step 4: Run GREEN and acceptance regressions**
 
-Run: `cd app; ../mix.bat test test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/changes_test.exs test/dramatizer/timeline_test.exs test/dramatizer/acceptance/timeline_restore_test.exs`
+Run: `cd app; mix.bat test test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/changes_test.exs test/dramatizer/timeline_test.exs test/dramatizer/acceptance/timeline_restore_test.exs`
 
 Expected: all selected tests pass and unresolved stale still blocks formal only.
 
@@ -475,7 +475,7 @@ end
 
 - [ ] **Step 2: Run RED**
 
-Run: `cd app; ../mix.bat test test/dramatizer_web/live/project_index_live_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
+Run: `cd app; mix.bat test test/dramatizer_web/live/project_index_live_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: the old horizontal nav and page structure fail the new selectors.
 
@@ -485,7 +485,7 @@ Reduce display headings, use the warm-neutral/ink/orange/teal token set, add com
 
 - [ ] **Step 4: Build assets and run UI tests**
 
-Run: `cd app; ../mix.bat format --check-formatted; ../mix.bat compile --warnings-as-errors; ../mix.bat assets.build; ../mix.bat test test/dramatizer_web/live/project_index_live_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
+Run: `cd app; mix.bat format --check-formatted; mix.bat compile --warnings-as-errors; mix.bat assets.build; mix.bat test test/dramatizer_web/live/project_index_live_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: format, compile, assets, and UI tests all pass without warnings.
 
@@ -540,9 +540,9 @@ Run in order:
 
 ```powershell
 cd app
-../mix.bat format --check-formatted
-../mix.bat compile --warnings-as-errors
-../mix.bat assets.build
+mix.bat format --check-formatted
+mix.bat compile --warnings-as-errors
+mix.bat assets.build
 cd ..
 ./scripts/test.ps1
 ./docs/ai_short_drama_framework_v0.2/tools/validate_contracts.ps1

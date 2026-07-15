@@ -44,4 +44,17 @@ defmodule Dramatizer.Prompts.ComposerTest do
     assert byte_size(prompt.core_hash) == 64
     assert byte_size(prompt.content_hash) == 64
   end
+
+  test "production proposal prompts are task-scoped and available" do
+    for {task, role} <- [
+          {:narrative_proposal, "分集叙事提案器"},
+          {:visual_design_proposal, "视觉设计提案器"},
+          {:directing_proposal, "导演提案器"}
+        ] do
+      assert task in Catalog.task_types()
+      assert {:ok, prompt} = Composer.compose(task, nil, %{input_json: ~s({"title":"雨夜来信"})})
+      assert prompt.content =~ role
+      assert prompt.content =~ "雨夜来信"
+    end
+  end
 end
