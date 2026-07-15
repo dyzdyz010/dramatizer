@@ -97,6 +97,21 @@ defmodule Dramatizer.Analysis.DAGTest do
     assert length(completed.result["provider_request_snapshot_ids"]) == 3
     assert Repo.aggregate(Attempt, :count) == 3
 
+    request =
+      Dramatizer.Repo.get!(
+        Dramatizer.Generation.ProviderRequestSnapshot,
+        hd(completed.result["provider_request_snapshot_ids"])
+      )
+
+    assert request.request_input["input"] =~ "人物与关系抽取器"
+    assert request.request_input["input"] =~ context.source.id
+    assert request.prompt_snapshot["core_version"] == "v1"
+    assert request.prompt_snapshot["schema_version"] == "analysis-schema-v2"
+    assert byte_size(request.prompt_snapshot["core_hash"]) == 64
+    assert byte_size(request.prompt_snapshot["schema_hash"]) == 64
+    assert byte_size(request.prompt_snapshot["config_hash"]) == 64
+    assert byte_size(request.prompt_snapshot["prompt_hash"]) == 64
+
     complete_remaining_nodes(run.id, people.id)
     assert {:ok, snapshot} = DAG.finalize(run)
     assert snapshot.source_revision_ids == [context.source.id]

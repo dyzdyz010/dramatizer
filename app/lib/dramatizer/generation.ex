@@ -53,7 +53,12 @@ defmodule Dramatizer.Generation do
     task_override = Map.get(options, :task_override, %{})
     config = ConfigResolver.resolve(task_type, project, task_override)
     safe_input = options |> Map.fetch!(:request_input) |> redact()
-    prompt_snapshot = options |> Map.get(:prompt_snapshot, %{}) |> redact()
+
+    prompt_snapshot =
+      options
+      |> Map.get(:prompt_snapshot, %{})
+      |> redact()
+      |> standardize_prompt_snapshot(config, safe_input)
 
     request_payload = %{
       "adapter" => config.adapter,
@@ -194,6 +199,28 @@ defmodule Dramatizer.Generation do
 
   def redact(value) when is_list(value), do: Enum.map(value, &redact/1)
   def redact(value), do: value
+
+  defp standardize_prompt_snapshot(prompt_snapshot, config, request_input) do
+    config_hash =
+      CanonicalJSON.hash(%{
+        "adapter" => config.adapter,
+        "credential_ref" => config.credential_ref,
+        "model" => config.model,
+        "params" => config.params
+      })
+
+    prompt_hash = CanonicalJSON.hash(prompt_snapshot)
+
+    prompt_snapshot
+    |> Map.put_new("config_hash", config_hash)
+    |> Map.put_new("prompt_hash", prompt_hash)
+    |> maybe_put_schema_hash(request_input)
+  end
+
+  defp maybe_put_schema_hash(prompt_snapshot, %{"schema" => schema}) when is_map(schema),
+    do: Map.put_new(prompt_snapshot, "schema_hash", CanonicalJSON.hash(schema))
+
+  defp maybe_put_schema_hash(prompt_snapshot, _request_input), do: prompt_snapshot
 
   defp redact_transition_attrs(attrs) do
     attrs

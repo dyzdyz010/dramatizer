@@ -86,8 +86,13 @@ defmodule Dramatizer.Generation.Adapters.OpenAIImages do
         [
           model: snapshot.model,
           prompt: Map.fetch!(input, "prompt"),
+          size: input["size"] || snapshot.params["size"],
+          quality: input["quality"] || snapshot.params["quality"],
           output_format: input["output_format"] || "png"
-        ] ++ image_fields ++ mask_fields
+        ]
+        |> Enum.reject(fn {_key, value} -> is_nil(value) end)
+        |> Kernel.++(image_fields)
+        |> Kernel.++(mask_fields)
 
       {:ok, %{path: "/v1/images/edits", options: [form_multipart: fields]}}
     end
@@ -127,7 +132,7 @@ defmodule Dramatizer.Generation.Adapters.OpenAIImages do
 
   defp handle_response(%Req.Response{status: status} = response, _format) do
     request_id = response |> Req.Response.get_header("x-request-id") |> List.first()
-    metadata = %{status: status, request_id: request_id}
+    metadata = provider_error_metadata(response.body, status, request_id)
 
     cond do
       status == 429 -> {:error, :rate_limited, metadata}
@@ -172,6 +177,20 @@ defmodule Dramatizer.Generation.Adapters.OpenAIImages do
       value when is_binary(value) and value != "" -> {:ok, value}
       _ -> {:error, :missing_credential, %{credential_ref: reference}}
     end
+  end
+
+  defp provider_error_metadata(body, status, request_id) do
+    error = if is_map(body), do: Map.get(body, "error", %{}), else: %{}
+
+    %{
+      status: status,
+      request_id: request_id,
+      provider_error: %{
+        code: Map.get(error, "code"),
+        type: Map.get(error, "type"),
+        message: Map.get(error, "message")
+      }
+    }
   end
 
   defp map_transport_error(reason) when reason in [:timeout, :etimedout],

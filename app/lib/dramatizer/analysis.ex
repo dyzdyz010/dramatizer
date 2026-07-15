@@ -1,11 +1,16 @@
 defmodule Dramatizer.Analysis do
   @moduledoc "Executes analysis nodes with an initial Attempt and at most two structured repairs."
 
+  import Ecto.Query
+
   alias Dramatizer.Analysis.{Schemas, Validator}
   alias Dramatizer.CanonicalJSON
   alias Dramatizer.Generation
   alias Dramatizer.Generation.Adapters.OpenAIResponses
+  alias Dramatizer.Projects
   alias Dramatizer.Projects.Project
+  alias Dramatizer.Prompts.Composer
+  alias Dramatizer.Repo
   alias Dramatizer.Workflow
   alias Dramatizer.Workflow.NodeRun
 
@@ -47,6 +52,7 @@ defmodule Dramatizer.Analysis do
        when index < @max_attempts do
     task_type = String.to_existing_atom(node.node_key)
     schema = Schemas.fetch!(task_type)
+    prompt = compose_prompt!(task_type, node, project)
 
     spec_payload = %{
       "node_run_id" => node.id,
@@ -57,8 +63,7 @@ defmodule Dramatizer.Analysis do
     }
 
     request_input = %{
-      "input" =>
-        request_text(node.input_snapshot["whole_document"], previous_output, previous_errors),
+      "input" => request_text(prompt.content, previous_output, previous_errors),
       "schema_name" => Atom.to_string(task_type),
       "schema" => schema,
       "source_revision_ids" => node.input_snapshot["source_revision_ids"],
@@ -78,6 +83,12 @@ defmodule Dramatizer.Analysis do
              node_run_id: node.id,
              request_input: request_input,
              prompt_snapshot: %{
+               "core_version" => prompt.core_version,
+               "core_hash" => prompt.core_hash,
+               "appendix_revision_id" => prompt.appendix_revision_id,
+               "appendix_revision" => prompt.appendix_revision,
+               "appendix_hash" => prompt.appendix_hash,
+               "content_hash" => prompt.content_hash,
                "schema_version" => Schemas.version(),
                "schema_hash" => CanonicalJSON.hash(schema)
              }
@@ -95,7 +106,7 @@ defmodule Dramatizer.Analysis do
             index,
             current_snapshot_ids,
             submitted,
-            provider_result.output
+            provider_result
           )
 
         {:error, code, metadata} ->
@@ -118,17 +129,22 @@ defmodule Dramatizer.Analysis do
          index,
          snapshot_ids,
          attempt,
-         output
+         provider_result
        ) do
+    output = provider_result.output
+
     case Validator.validate(String.to_existing_atom(node.node_key), output,
            source_revision_ids: node.input_snapshot["source_revision_ids"]
          ) do
       {:ok, validated} ->
         {:ok, _succeeded_attempt} =
           Generation.transition_attempt(attempt, :succeeded, %{
+            external_request_id: Map.get(provider_result, :external_request_id),
             response_metadata: %{
               "output_hash" => CanonicalJSON.hash(validated),
-              "validated" => true
+              "validated" => true,
+              "request_id" => Map.get(provider_result, :request_id),
+              "usage" => Map.get(provider_result, :usage, %{})
             }
           })
 
@@ -143,9 +159,14 @@ defmodule Dramatizer.Analysis do
       {:error, errors} ->
         {:ok, _failed_attempt} =
           Generation.transition_attempt(attempt, :failed, %{
+            external_request_id: Map.get(provider_result, :external_request_id),
             error_code: "structured_validation_failed",
             error_message: "structured_validation_failed",
-            response_metadata: %{"validation_errors" => stringify(errors)}
+            response_metadata: %{
+              "validation_errors" => stringify(errors),
+              "request_id" => Map.get(provider_result, :request_id),
+              "usage" => Map.get(provider_result, :usage, %{})
+            }
           })
 
         if index + 1 < @max_attempts do
@@ -169,11 +190,43 @@ defmodule Dramatizer.Analysis do
     {:error, code, failed}
   end
 
-  defp request_text(whole_document, nil, []), do: whole_document
+  defp compose_prompt!(task_type, node, project) do
+    upstream_results =
+      if node.required_parent_keys == [] do
+        %{}
+      else
+        Repo.all(
+          from parent in NodeRun,
+            where:
+              parent.workflow_run_id == ^node.workflow_run_id and
+                parent.node_key in ^node.required_parent_keys,
+            select: {parent.node_key, parent.result}
+        )
+        |> Map.new()
+      end
 
-  defp request_text(whole_document, previous_output, errors) do
+    input_json =
+      CanonicalJSON.encode(%{
+        "task_type" => node.node_key,
+        "source_revision_ids" => node.input_snapshot["source_revision_ids"],
+        "whole_document" => node.input_snapshot["whole_document"],
+        "upstream_results" => upstream_results,
+        "locator_contract" => %{
+          "start_offset" => "zero_based_unicode_character_offset_in_whole_document",
+          "end_offset" => "exclusive_zero_based_unicode_character_offset_in_whole_document"
+        }
+      })
+
+    appendix = Projects.current_prompt_appendix(project, task_type)
+    {:ok, prompt} = Composer.compose(task_type, appendix, %{input_json: input_json})
+    prompt
+  end
+
+  defp request_text(prompt, nil, []), do: prompt
+
+  defp request_text(prompt, previous_output, errors) do
     """
-    #{whole_document}
+    #{prompt}
 
     修复上一份结构化输出。不得删除信息或猜测字段；仅按错误路径修复。
     errors=#{Jason.encode!(stringify(errors))}

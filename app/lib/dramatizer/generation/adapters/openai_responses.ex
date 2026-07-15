@@ -76,7 +76,7 @@ defmodule Dramatizer.Generation.Adapters.OpenAIResponses do
 
   defp handle_response(%Req.Response{status: status} = response) do
     request_id = response |> Req.Response.get_header("x-request-id") |> List.first()
-    metadata = %{status: status, request_id: request_id}
+    metadata = provider_error_metadata(response.body, status, request_id)
 
     cond do
       status == 429 -> {:error, :rate_limited, metadata}
@@ -105,6 +105,20 @@ defmodule Dramatizer.Generation.Adapters.OpenAIResponses do
       value when is_binary(value) and value != "" -> {:ok, value}
       _ -> {:error, :missing_credential, %{credential_ref: reference}}
     end
+  end
+
+  defp provider_error_metadata(body, status, request_id) do
+    error = if is_map(body), do: Map.get(body, "error", %{}), else: %{}
+
+    %{
+      status: status,
+      request_id: request_id,
+      provider_error: %{
+        code: Map.get(error, "code"),
+        type: Map.get(error, "type"),
+        message: Map.get(error, "message")
+      }
+    }
   end
 
   defp maybe_put_reasoning(body, %{"reasoning" => reasoning}),

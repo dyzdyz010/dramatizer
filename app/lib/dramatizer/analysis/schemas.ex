@@ -2,7 +2,7 @@ defmodule Dramatizer.Analysis.Schemas do
   @moduledoc "Versioned strict structured-output schemas for whole-novel analysis tasks."
 
   @task_types ~w(people_relations places_props_world events_timeline entity_merge episode_candidates conflict_check)a
-  @version "analysis-schema-v1"
+  @version "analysis-schema-v2"
 
   def version, do: @version
 

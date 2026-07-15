@@ -24,12 +24,12 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["source_revision_id", "start_offset", "end_offset"],
+              "required": ["source_revision_id", "start_offset", "end_offset", "page"],
               "properties": {
                 "source_revision_id": {"type": "string", "minLength": 1},
                 "start_offset": {"type": "integer", "minimum": 0},
                 "end_offset": {"type": "integer", "minimum": 0},
-                "page": {"type": "integer", "minimum": 1}
+                "page": {"type": ["integer", "null"], "minimum": 1}
               }
             }
           },
@@ -37,7 +37,10 @@
             "type": "array",
             "items": {"type": "string", "minLength": 1}
           },
-          "data": {"type": "object"}
+          "data": {
+            "type": "string",
+            "description": "A JSON-encoded object containing task-specific fields. Use {} when empty."
+          }
         }
       }
     }

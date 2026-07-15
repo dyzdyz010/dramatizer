@@ -2,6 +2,7 @@ defmodule Dramatizer.Directing.Compiler do
   @moduledoc "Pure deterministic ShotPlanRevision to GenerationSpecRevision compiler."
 
   alias Dramatizer.CanonicalJSON
+  alias Dramatizer.Generation.ConfigResolver
   alias Dramatizer.Projects
   alias Dramatizer.Projects.Project
   alias Dramatizer.Repo
@@ -28,6 +29,7 @@ defmodule Dramatizer.Directing.Compiler do
 
       compiler_config = opts |> Keyword.get(:compiler_config, %{}) |> stringify()
       templates = template_snapshots()
+      image_generation = image_generation_snapshot(project)
 
       revision_summaries =
         Map.new(@revision_kinds, fn {key, _kind} ->
@@ -44,7 +46,7 @@ defmodule Dramatizer.Directing.Compiler do
 
       specs =
         Enum.map(inputs.shot_plan.payload["shots"], fn shot ->
-          render_shot_spec(shot, profile, dependencies)
+          render_shot_spec(shot, profile, dependencies, image_generation)
         end)
 
       payload = %{
@@ -53,6 +55,7 @@ defmodule Dramatizer.Directing.Compiler do
           "source_revisions" => sources,
           "revisions" => revision_summaries,
           "production_profile" => profile,
+          "image_generation" => image_generation,
           "prompt_snapshot_ids" => Keyword.get(opts, :prompt_snapshot_ids, []),
           "compiler_version" => @compiler_version,
           "template_version" => @template_version,
@@ -127,10 +130,48 @@ defmodule Dramatizer.Directing.Compiler do
     }
   end
 
-  defp render_shot_spec(shot, profile, dependencies) do
+  defp render_shot_spec(shot, profile, dependencies, image_generation) do
     template_path("shot_keyframe.json.eex")
-    |> EEx.eval_file(shot: shot, profile: profile, dependencies: dependencies)
+    |> EEx.eval_file(
+      shot: shot,
+      profile: profile,
+      dependencies: dependencies,
+      image_generation: image_generation
+    )
     |> Jason.decode!()
+  end
+
+  defp image_generation_snapshot(project) do
+    config = ConfigResolver.resolve(:shot_keyframe, project)
+    size = config.params["size"]
+    {width, height} = parse_size!(size)
+
+    values = %{
+      "adapter" => config.adapter,
+      "model" => config.model,
+      "size" => size,
+      "quality" => config.params["quality"],
+      "width" => width,
+      "height" => height
+    }
+
+    Map.put(values, "config_hash", CanonicalJSON.hash(values))
+  end
+
+  defp parse_size!(size) when is_binary(size) do
+    case String.split(size, "x", parts: 2) do
+      [width, height] ->
+        with {parsed_width, ""} <- Integer.parse(width),
+             {parsed_height, ""} <- Integer.parse(height),
+             true <- parsed_width > 0 and parsed_height > 0 do
+          {parsed_width, parsed_height}
+        else
+          _ -> raise ArgumentError, "invalid image generation size: #{inspect(size)}"
+        end
+
+      _ ->
+        raise ArgumentError, "invalid image generation size: #{inspect(size)}"
+    end
   end
 
   defp template_snapshots do

@@ -474,13 +474,13 @@ Changes.resolve_stale(selection, :pin_old_input | {:replace, asset_id})
 - Modify: `docs/runbooks/local-development.md`
 - Modify: `STATUS.md`
 
-- [ ] Gate: verify only whether `OPENAI_API_KEY` is available from process env or gitignored root `.env`. If absent, stop and ask the user to add it; never echo it.
-- [ ] Run one bounded Chinese fixture through `gpt-5.6-terra` whole-document structured extraction/candidate generation, generate the required references and at least two 3-shot candidates through `gpt-image-2`, run technical and `gpt-5.6-terra` semantic QC, select via explicit smoke fixture decision, and export the formal Animatic.
-- [ ] Assert request snapshots contain model/config/prompt/schema hashes but no raw key/auth header; capture provider request IDs, token/image usage and actual cost when returned.
-- [ ] Probe output media and trace every final clip through AssetVersion/QC/Attempt/RequestSnapshot/GenerationSpec/ShotPlan/Visual/Narrative/Source.
-- [ ] Keep generated real-provider fixtures/artifacts out of Git; write only redacted verification metadata to `STATUS.md`.
-- [ ] Verify: `./scripts/real-smoke.ps1` exits 0 and reports exact counts without secrets.
-- [ ] Commit: `test: verify real OpenAI production path`.
+- [x] Gate: verify only whether `OPENAI_API_KEY` is available from process env or gitignored root `.env`. If absent, stop and ask the user to add it; never echo it.
+- [x] Run one bounded Chinese fixture through `gpt-5.6-terra` whole-document structured extraction/candidate generation, generate the required references and at least two 3-shot candidates through `gpt-image-2`, run technical and `gpt-5.6-terra` semantic QC, select via explicit smoke fixture decision, and export the formal Animatic.
+- [x] Assert request snapshots contain model/config/prompt/schema hashes but no raw key/auth header; capture provider request IDs, token/image usage and actual cost when returned.
+- [x] Probe output media and trace every final clip through AssetVersion/QC/Attempt/RequestSnapshot/GenerationSpec/ShotPlan/Visual/Narrative/Source.
+- [x] Keep generated real-provider fixtures/artifacts out of Git; write only redacted verification metadata to `STATUS.md`.
+- [x] Verify: `./scripts/real-smoke.ps1` exits 0 and reports exact counts without secrets.
+- [x] Commit: `test: verify real OpenAI production path`.
 
 ### Task 17: Final verification, self-review, publish, and run for user testing
 

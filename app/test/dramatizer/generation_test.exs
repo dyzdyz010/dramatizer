@@ -29,6 +29,8 @@ defmodule Dramatizer.GenerationTest do
     assert snapshot.request_input["authorization"] == "[REDACTED]"
     assert snapshot.request_input["nested"]["api_key"] == "[REDACTED]"
     assert snapshot.request_input["nested"]["value"] == 7
+    assert byte_size(snapshot.prompt_snapshot["config_hash"]) == 64
+    assert byte_size(snapshot.prompt_snapshot["prompt_hash"]) == 64
     refute inspect(snapshot) =~ "must-not-persist"
     assert snapshot.secrets_excluded
     assert attempt.status == :prepared

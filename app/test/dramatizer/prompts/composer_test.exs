@@ -30,4 +30,18 @@ defmodule Dramatizer.Prompts.ComposerTest do
     assert {:error, :appendix_task_mismatch} =
              Composer.compose(:people_relations, event_appendix, %{input_json: "{}"})
   end
+
+  test "composes the hidden CorePrompt when no editable Appendix exists" do
+    input = ~s({"source_revision_ids":["source-1"],"whole_document":"雨夜车站"})
+
+    assert {:ok, prompt} = Composer.compose(:people_relations, nil, %{input_json: input})
+
+    assert prompt.content =~ "人物与关系抽取器"
+    assert prompt.content =~ input
+    refute prompt.content =~ "用户可编辑补充"
+    assert prompt.appendix_revision_id == nil
+    assert prompt.appendix_hash == nil
+    assert byte_size(prompt.core_hash) == 64
+    assert byte_size(prompt.content_hash) == 64
+  end
 end

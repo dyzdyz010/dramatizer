@@ -103,6 +103,8 @@ defmodule Dramatizer.Generation.OpenAIImagesTest do
           "prompt" => "保持角色一致，改成蓝色雨衣",
           "image_asset_ids" => [parent.id],
           "mask_asset_id" => mask.id,
+          "size" => "1024x1536",
+          "quality" => "medium",
           "output_format" => "png"
         }
       })
@@ -121,6 +123,10 @@ defmodule Dramatizer.Generation.OpenAIImagesTest do
     assert raw =~ ~s(name="image[]"; filename="#{parent.id}.png")
     assert raw =~ ~s(name="mask"; filename="#{mask.id}.png")
     assert raw =~ "保持角色一致，改成蓝色雨衣"
+    assert raw =~ ~s(name="size")
+    assert raw =~ "1024x1536"
+    assert raw =~ ~s(name="quality")
+    assert raw =~ "medium"
 
     assert snapshot.adapter == "openai_images"
     assert attempt.status == :prepared

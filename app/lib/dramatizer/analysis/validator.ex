@@ -4,13 +4,20 @@ defmodule Dramatizer.Analysis.Validator do
   alias Dramatizer.Analysis.Schemas
 
   def validate(task_type, value, opts \\ []) do
-    with {:ok, decoded} <- decode(value) do
-      schema_errors = validate_schema(decoded, Schemas.fetch!(task_type), "/")
+    with {:ok, decoded} <- decode(value),
+         schema_value <- normalize_for_schema(decoded) do
+      schema_errors = validate_schema(schema_value, Schemas.fetch!(task_type), "/")
 
       if schema_errors == [] do
-        case domain_errors(decoded, opts) do
-          [] -> {:ok, decoded}
-          errors -> {:error, errors}
+        case normalize_after_schema(schema_value) do
+          {:ok, normalized} ->
+            case domain_errors(normalized, opts) do
+              [] -> {:ok, normalized}
+              errors -> {:error, errors}
+            end
+
+          {:error, errors} ->
+            {:error, errors}
         end
       else
         {:error, schema_errors}
@@ -28,6 +35,50 @@ defmodule Dramatizer.Analysis.Validator do
   end
 
   defp decode(_value), do: {:error, [%{code: :invalid_json, path: "/"}]}
+
+  defp normalize_for_schema(%{"items" => items} = value) when is_list(items) do
+    normalized =
+      Enum.map(items, fn item ->
+        item
+        |> Map.update("data", "{}", fn
+          data when is_map(data) -> Jason.encode!(data)
+          data -> data
+        end)
+        |> Map.update("locators", [], fn locators ->
+          Enum.map(locators, &Map.put_new(&1, "page", nil))
+        end)
+      end)
+
+    Map.put(value, "items", normalized)
+  end
+
+  defp normalize_for_schema(value), do: value
+
+  defp normalize_after_schema(%{"items" => items} = value) do
+    items
+    |> Enum.with_index()
+    |> Enum.reduce_while({:ok, []}, fn {item, index}, {:ok, normalized} ->
+      case Jason.decode(item["data"]) do
+        {:ok, data} when is_map(data) ->
+          locators =
+            Enum.map(item["locators"], fn locator ->
+              if is_nil(locator["page"]), do: Map.delete(locator, "page"), else: locator
+            end)
+
+          prepared = item |> Map.put("data", data) |> Map.put("locators", locators)
+          {:cont, {:ok, normalized ++ [prepared]}}
+
+        _ ->
+          {:halt, {:error, [error(:invalid_data_json, "/items/#{index}/data")]}}
+      end
+    end)
+    |> case do
+      {:ok, normalized} -> {:ok, Map.put(value, "items", normalized)}
+      error -> error
+    end
+  end
+
+  defp normalize_after_schema(value), do: {:ok, value}
 
   defp validate_schema(value, schema, path) do
     type_errors = type_errors(value, schema["type"], path)
@@ -47,7 +98,19 @@ defmodule Dramatizer.Analysis.Validator do
   defp type_errors(value, "array", path) when not is_list(value), do: [error(:type, path)]
   defp type_errors(value, "string", path) when not is_binary(value), do: [error(:type, path)]
   defp type_errors(value, "integer", path) when not is_integer(value), do: [error(:type, path)]
+
+  defp type_errors(value, allowed, path) when is_list(allowed) do
+    if Enum.any?(allowed, &type_matches?(value, &1)), do: [], else: [error(:type, path)]
+  end
+
   defp type_errors(_value, _type, _path), do: []
+
+  defp type_matches?(nil, "null"), do: true
+  defp type_matches?(value, "integer"), do: is_integer(value)
+  defp type_matches?(value, "string"), do: is_binary(value)
+  defp type_matches?(value, "object"), do: is_map(value)
+  defp type_matches?(value, "array"), do: is_list(value)
+  defp type_matches?(_value, _type), do: false
 
   defp enum_errors(value, %{"enum" => allowed}, path) do
     if value in allowed, do: [], else: [error(:enum, path)]

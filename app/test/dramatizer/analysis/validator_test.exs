@@ -48,6 +48,18 @@ defmodule Dramatizer.Analysis.ValidatorTest do
     assert first.path == "/items/0/invented"
   end
 
+  test "provider JSON-string data is decoded after strict schema validation" do
+    provider = %{
+      "items" => [
+        item("episode:e1", "creative", [])
+        |> Map.put("data", Jason.encode!(%{"title" => "雨夜来信"}))
+      ]
+    }
+
+    assert {:ok, normalized} = Validator.validate(:episode_candidates, provider)
+    assert hd(normalized["items"])["data"] == %{"title" => "雨夜来信"}
+  end
+
   defp item(id, semantics, locators, references \\ []) do
     %{
       "id" => id,
