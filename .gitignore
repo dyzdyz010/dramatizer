@@ -1,5 +1,7 @@
 .omx/
 .superpowers/
 .worktrees/
+.env
+var/
 .DS_Store
 Thumbs.db

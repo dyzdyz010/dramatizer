@@ -54,13 +54,13 @@ config :dramatizer,
   provider_mode: :fake
 ```
 
-- [ ] Generate `app/` with `mix phx.new app --app dramatizer --module Dramatizer --database postgres --binary-id --no-mailer --no-agents-md --install`.
-- [ ] Add `oban`, `req`, and `stream_data`; configure Ecto primary/foreign keys as UUIDs and Oban queues `workflow: 5`, `generation: 3`, `media: 2`, `qc: 3`.
-- [ ] Write `runtime_config_test.exs` first to require localhost binding, externalized DB URL, provider mode, and absolute asset root; observe failure, implement configuration, then observe green.
-- [ ] Add a PostgreSQL 17 Compose service named `dramatizer-postgres` on host port 55432 with an isolated named volume and a healthcheck.
-- [ ] Add PowerShell setup/test entrypoints that load a gitignored root `.env`, start only the scoped Compose service, install Python requirements later when present, create/migrate DBs, and propagate non-zero exits.
-- [ ] Verify: `docker compose -f infra/docker-compose.yml up -d --wait`; `Push-Location app; mix deps.get; mix ecto.create; mix test test/dramatizer/runtime_config_test.exs; Pop-Location`.
-- [ ] Commit: `chore: scaffold Phoenix runtime`.
+- [x] Generate `app/` with `mix phx.new app --app dramatizer --module Dramatizer --database postgres --binary-id --no-mailer --no-agents-md --install`.
+- [x] Add `oban`, `req`, and `stream_data`; configure Ecto primary/foreign keys as UUIDs and Oban queues `workflow: 5`, `generation: 3`, `media: 2`, `qc: 3`.
+- [x] Write `runtime_config_test.exs` first to require localhost binding, externalized DB URL, provider mode, and absolute asset root; observe failure, implement configuration, then observe green.
+- [x] Add a PostgreSQL 17 Compose service named `dramatizer-postgres` on host port 55432 with an isolated named volume and a healthcheck.
+- [x] Add PowerShell setup/test entrypoints that load a gitignored root `.env`, start only the scoped Compose service, install Python requirements later when present, create/migrate DBs, and propagate non-zero exits.
+- [x] Verify: `docker compose -f infra/docker-compose.yml up -d --wait`; `Push-Location app; mix deps.get; mix ecto.create; mix test test/dramatizer/runtime_config_test.exs; Pop-Location`.
+- [x] Commit: `chore: scaffold Phoenix runtime`.
 
 ### Task 2: Establish projects, layered configuration, prompts, and immutable revisions
 
