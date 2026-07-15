@@ -495,10 +495,10 @@ Changes.resolve_stale(selection, :pin_old_input | {:replace, asset_id})
 - [x] Re-read the confirmed PRD and record a FR-001–FR-092 / AT-001–AT-010 traceability table in `STATUS.md`; no requirement may be marked complete from test inference alone.
 - [x] Run fresh full gates: `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix test`, `mix assets.build`, contract validator, Python tests/protocol probes, Playwright E2E, real-provider smoke, backup/restore, `git diff --check`, and a secret-pattern scan.
 - [x] Run a focused code review for data invariants, cross-context writes, terminal-state regression, duplicate external effects, error redaction, and subprocess cleanup; fix findings with regression tests.
-- [ ] Commit all scoped changes, push `feat/dramatizer-mvp`, and verify the local branch equals `origin/feat/dramatizer-mvp`.
-- [ ] Start `scripts/dev.ps1` as a hidden background process, wait for PostgreSQL/Phoenix/Oban health, probe `http://127.0.0.1:4000/`, and run one final browser navigation smoke against the persistent process.
-- [ ] Record PID/log paths/URL and the exact fresh verification evidence in `STATUS.md`; leave the system running for user testing.
-- [ ] Commit: `docs: record verified MVP handoff`; push and re-verify remote head.
+- [x] Commit all scoped changes, push `feat/dramatizer-mvp`, and verify the local branch equals `origin/feat/dramatizer-mvp`.
+- [x] Start `scripts/dev.ps1` as a hidden background process, wait for PostgreSQL/Phoenix/Oban health, probe `http://127.0.0.1:4000/`, and run one final browser navigation smoke against the persistent process.
+- [x] Record PID/log paths/URL and the exact fresh verification evidence in `STATUS.md`; leave the system running for user testing.
+- [x] Commit: `docs: record verified MVP handoff`; push and re-verify remote head.
 
 ## Scope Traceability
 

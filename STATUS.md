@@ -4,7 +4,7 @@
 
 **当前分支：** `feat/dramatizer-mvp`（隔离 worktree：`.worktrees/dramatizer-mvp`）
 
-**工作阶段：** Task 1–17 功能实现和全部 fresh gate 已完成；等待最终文档提交、推送与常驻进程启动
+**工作阶段：** Task 1–17、全部 fresh gate、发布和常驻浏览器烟测均已完成；系统已留在本机供验收
 
 ## 当前事实
 
@@ -109,11 +109,15 @@
 
 ## 运行交接
 
-- URL、PID 和日志路径将在最终常驻启动后写入本节。
-- 根目录 `.env` 是本机配置，不提交；默认开发/测试仍可用 Fake，设置 `DRAMATIZER_PROVIDER=openai` 才会让网页实际调用 OpenAI。
+- 测试地址：`http://127.0.0.1:4000/`
+- `scripts/dev.ps1` 监督 PID：`38620`；Phoenix/BEAM 监听 PID：`75180`。
+- 当前 Provider 模式：`fake`（`.env` 未显式设置 `DRAMATIZER_PROVIDER` 时的默认值）；真实 OpenAI 闭环已由上面的 `-Force` 门禁验证。若要让网页实际计费调用 OpenAI，在 `.env` 设置 `DRAMATIZER_PROVIDER=openai` 后重启服务。
+- 标准输出：`output/runtime/dev.stdout.log`；标准错误：`output/runtime/dev.stderr.log`。错误日志当前只含 Docker Compose healthy 状态，没有 Phoenix 异常。
+- 最终直接 HTTP 探测返回 200；Playwright CLI 页面标题为“短剧制作台 · AI 短剧制作台”，可见项目创建和小说导入引导。截图：`output/playwright/persistent-home.png`。
+- 根目录 `.env` 是本机配置且不提交；运行日志、截图、真实生成素材和烟测数据库均由 Git 忽略。
 
-## 剩余动作
+## 交接结论
 
-1. 完成 Task 17 文档提交并推送 `feat/dramatizer-mvp`，核对本地与远端 HEAD。
-2. 隐藏启动 `scripts/dev.ps1`，等待 PostgreSQL/Phoenix/Oban 就绪。
-3. 对常驻 `http://127.0.0.1:4000/` 执行最后一次 Playwright 导航烟测并把进程留给用户。
+- `feat/dramatizer-mvp` 已推送并设置为跟踪 `origin/feat/dramatizer-mvp`；最终文档提交后再次核对本地和远端对象 ID。
+- worktree 保留，不执行合并或清理，便于用户直接测试和后续迭代。
+- 当前没有未解决的功能、测试或外部配置阻塞。
