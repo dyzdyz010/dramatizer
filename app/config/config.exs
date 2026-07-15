@@ -13,12 +13,18 @@ provider_mode =
     _ -> :fake
   end
 
+local_python =
+  case :os.type() do
+    {:win32, _} -> Path.expand("../.venv/Scripts/python.exe", __DIR__)
+    _ -> Path.expand("../.venv/bin/python", __DIR__)
+  end
+
 config :dramatizer,
   ecto_repos: [Dramatizer.Repo],
   generators: [timestamp_type: :utc_datetime_usec, binary_id: true],
   asset_store_root:
     System.get_env("DRAMATIZER_ASSET_STORE_ROOT", Path.expand("../../var/assets", __DIR__)),
-  media_worker_python: System.get_env("DRAMATIZER_PYTHON", "python"),
+  media_worker_python: System.get_env("DRAMATIZER_PYTHON", local_python),
   ffmpeg_path: System.get_env("DRAMATIZER_FFMPEG", "ffmpeg"),
   ffprobe_path: System.get_env("DRAMATIZER_FFPROBE", "ffprobe"),
   provider_mode: provider_mode

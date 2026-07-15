@@ -18,6 +18,12 @@ if (Test-Path -LiteralPath $envPath) {
 docker compose -f (Join-Path $repoRoot "infra\docker-compose.yml") up -d --wait
 if ($LASTEXITCODE -ne 0) { throw "PostgreSQL startup failed" }
 
+$venvPython = Join-Path $repoRoot "app\.venv\Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $venvPython)) {
+    throw "Python virtual environment is missing. Run scripts/setup.ps1 first."
+}
+[Environment]::SetEnvironmentVariable("DRAMATIZER_PYTHON", $venvPython, "Process")
+
 Push-Location (Join-Path $repoRoot "app")
 try {
     mix.bat test

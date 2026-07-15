@@ -18,6 +18,17 @@ if (Test-Path -LiteralPath $envPath) {
 docker compose -f (Join-Path $repoRoot "infra\docker-compose.yml") up -d --wait
 if ($LASTEXITCODE -ne 0) { throw "PostgreSQL startup failed" }
 
+$venvRoot = Join-Path $repoRoot "app\.venv"
+$venvPython = Join-Path $venvRoot "Scripts\python.exe"
+if (-not (Test-Path -LiteralPath $venvPython)) {
+    python -m venv $venvRoot
+    if ($LASTEXITCODE -ne 0) { throw "Python virtual environment creation failed" }
+}
+
+& $venvPython -m pip install -r (Join-Path $repoRoot "app\priv\media_worker\requirements.txt")
+if ($LASTEXITCODE -ne 0) { throw "Python media dependencies failed" }
+[Environment]::SetEnvironmentVariable("DRAMATIZER_PYTHON", $venvPython, "Process")
+
 Push-Location (Join-Path $repoRoot "app")
 try {
     mix.bat deps.get

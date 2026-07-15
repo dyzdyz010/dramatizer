@@ -128,12 +128,12 @@ Assets.verify(asset_version)
 Media.Worker.run(command, payload)
 ```
 
-- [ ] Write failing tests that prove no `AssetVersion` exists before finalize, final paths are SHA-256 content-addressed, duplicate bytes deduplicate blobs but not lineage records, parent assets remain immutable, invalid media leaves a recoverable intent, and no staging file is exposed downstream.
-- [ ] Implement `upload_intents` and `asset_versions` with stable idempotency keys, parent asset reference, exact size/MIME/hash metadata, and atomic same-volume rename into `final/<sha-prefix>/<sha>`.
-- [ ] Implement versioned JSON-lines Python commands `probe_image`, `probe_video`, `extract_pdf_text`, and later `render_animatic`; reject unknown protocol versions/commands.
-- [ ] Add deterministic technical image probe using Pillow/FFprobe and map failures to stable error codes.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer/assets_test.exs test/dramatizer/media/worker_test.exs; Pop-Location`.
-- [ ] Commit: `feat: add content addressed asset finalization`.
+- [x] Write failing tests that prove no `AssetVersion` exists before finalize, final paths are SHA-256 content-addressed, duplicate bytes deduplicate blobs but not lineage records, parent assets remain immutable, invalid media leaves a recoverable intent, and no staging file is exposed downstream.
+- [x] Implement `upload_intents` and `asset_versions` with stable idempotency keys, parent asset reference, exact size/MIME/hash metadata, and atomic same-volume rename into `final/<sha-prefix>/<sha>`.
+- [x] Implement versioned JSON-lines Python commands `probe_image`, `probe_video`, `extract_pdf_text`, and later `render_animatic`; reject unknown protocol versions/commands.
+- [x] Add deterministic technical image probe using Pillow/FFprobe and map failures to stable error codes.
+- [x] Verify: `Push-Location app; mix test test/dramatizer/assets_test.exs test/dramatizer/media/worker_test.exs; Pop-Location`.
+- [x] Commit: `feat: add content addressed asset finalization`.
 
 ### Task 4: Implement recoverable workflow, attempts, events, and costs
 
