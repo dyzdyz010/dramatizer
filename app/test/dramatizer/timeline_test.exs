@@ -89,6 +89,9 @@ defmodule Dramatizer.TimelineTest do
     assert {:ok, replaced} = Timeline.replace_clip(second, context.selection1)
     refute replaced.placeholder
     assert replaced.asset_version_id == context.selection1.asset_version_id
+
+    reference_selection = %{context.selection1 | slot_key: "reference:character:linxia/front"}
+    assert {:error, :shot_selection_required} = Timeline.replace_clip(second, reference_selection)
   end
 
   test "sentence subtitles are editable without mutating Narrative and freeze exact source/style",

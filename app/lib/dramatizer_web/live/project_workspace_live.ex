@@ -906,7 +906,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               clips={@clips}
               subtitles={@subtitles}
               renders={@renders}
-              selections={@selections}
+              selections={shot_selections(@selections)}
             />
           </section>
 
@@ -1265,25 +1265,29 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp materialize_generation_specs(project, revision) do
     count = ConfigResolver.resolve(:shot_keyframe, project).params["candidate_count"] || 2
 
-    Enum.each(revision.payload["specs"], fn compiled ->
-      payload =
-        compiled
-        |> Map.get("payload", %{})
-        |> Map.put("shot_id", compiled["shot_id"])
+    if is_integer(count) and count > 0 do
+      Enum.each(revision.payload["specs"], fn compiled ->
+        payload =
+          compiled
+          |> Map.get("payload", %{})
+          |> Map.put("shot_id", compiled["shot_id"])
 
-      Enum.each(0..(count - 1), fn index ->
-        {:ok, _spec} =
-          Generation.create_spec(project, %{
-            revision_id: revision.id,
-            kind: compiled["kind"],
-            candidate_index: index,
-            formal: true,
-            payload: payload
-          })
+        Enum.each(0..(count - 1), fn index ->
+          {:ok, _spec} =
+            Generation.create_spec(project, %{
+              revision_id: revision.id,
+              kind: compiled["kind"],
+              candidate_index: index,
+              formal: true,
+              payload: payload
+            })
+        end)
       end)
-    end)
 
-    :ok
+      :ok
+    else
+      {:error, :invalid_candidate_count}
+    end
   end
 
   defp materialize_reference_specs(project, visual) do
@@ -1291,44 +1295,51 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     count = config.params["candidate_count"] || 4
     {width, height} = parse_image_size(config.params["size"] || "768x1360")
 
-    specs =
-      for object <- visual.payload["objects"] || [],
-          object["reference_required"],
-          variant <- object["variants"] || [],
-          slot <- variant["required_slots"] || [],
-          index <- 0..(count - 1) do
-        reference_slot = "#{object["id"]}/#{variant["id"]}/#{slot}"
+    if is_integer(count) and count > 0 do
+      specs =
+        for object <- visual.payload["objects"] || [],
+            object["reference_required"],
+            variant <- object["variants"] || [],
+            slot <- variant["required_slots"] || [],
+            index <- 0..(count - 1) do
+          reference_slot = "#{object["id"]}/#{variant["id"]}/#{slot}"
 
-        payload = %{
-          "object_id" => object["id"],
-          "reference_slot" => reference_slot,
-          "slot_key" => "reference:#{reference_slot}",
-          "object" => object,
-          "variant" => variant,
-          "slot" => slot,
-          "prompt" => "为#{object["name"] || object["id"]}生成#{slot}参考图",
-          "width" => width,
-          "height" => height,
-          "aspect_width" => visual.profile_snapshot["aspect_width"] || 9,
-          "aspect_height" => visual.profile_snapshot["aspect_height"] || 16,
-          "aspect_tolerance" => 0.01,
-          "dependencies" => %{"visual_design_revision_id" => visual.id}
-        }
+          payload = %{
+            "object_id" => object["id"],
+            "reference_slot" => reference_slot,
+            "slot_key" => "reference:#{reference_slot}",
+            "object" => object,
+            "variant" => variant,
+            "slot" => slot,
+            "prompt" => "为#{object["name"] || object["id"]}生成#{slot}参考图",
+            "width" => width,
+            "height" => height,
+            "aspect_width" => visual.profile_snapshot["aspect_width"] || 9,
+            "aspect_height" => visual.profile_snapshot["aspect_height"] || 16,
+            "aspect_tolerance" => 0.01,
+            "dependencies" => %{"visual_design_revision_id" => visual.id}
+          }
 
-        {:ok, spec} =
-          Generation.create_spec(project, %{
-            revision_id: visual.id,
-            kind: "reference_image",
-            candidate_index: index,
-            formal: true,
-            payload: payload
-          })
+          {:ok, spec} =
+            Generation.create_spec(project, %{
+              revision_id: visual.id,
+              kind: "reference_image",
+              candidate_index: index,
+              formal: true,
+              payload: payload
+            })
 
-        spec
-      end
+          spec
+        end
 
-    {:ok, specs}
+      {:ok, specs}
+    else
+      {:error, :invalid_candidate_count}
+    end
   end
+
+  defp shot_selections(selections),
+    do: Enum.filter(selections, &String.starts_with?(&1.slot_key, "shot:"))
 
   defp fake_fault_spec(project) do
     Generation.create_spec(project, %{
@@ -1673,6 +1684,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp human_error(:confirmed_timeline_inputs_required), do: "请先确认 Narrative 与 ShotPlan。"
   defp human_error(:analysis_snapshot_required), do: "请先完成全文分析。"
   defp human_error(:invalid_json), do: "JSON 格式无效。"
+  defp human_error(:invalid_candidate_count), do: "候选数量必须是正整数。"
+  defp human_error(:shot_selection_required), do: "时间线只能使用镜头候选，不能使用参考图。"
   defp human_error(reason), do: inspect(reason)
 
   defp upload_unready?([]), do: true

@@ -54,4 +54,17 @@ defmodule Dramatizer.ProjectsTest do
     assert first.body_hash != second.body_hash
     assert Projects.current_prompt_appendix(project, :people_relations).id == second.id
   end
+
+  test "model overrides reject non-positive candidate counts" do
+    assert {:ok, project} = Projects.create_project(%{name: "候选数边界"})
+
+    assert {:error, changeset} =
+             Projects.put_model_override(project, :reference_image, %{
+               model: "gpt-image-2",
+               params: %{"candidate_count" => 0}
+             })
+
+    assert "must be a positive integer" in errors_on(changeset).params
+    refute Projects.model_override(project, :reference_image)
+  end
 end

@@ -231,13 +231,17 @@ defmodule Dramatizer.Timeline do
   end
 
   def replace_clip(%Clip{} = clip, %SelectionDecision{status: :active} = selection) do
-    clip
-    |> Clip.edit_changeset(%{
-      selection_decision_id: selection.id,
-      asset_version_id: selection.asset_version_id,
-      placeholder: false
-    })
-    |> Repo.update()
+    if String.starts_with?(selection.slot_key, "shot:") do
+      clip
+      |> Clip.edit_changeset(%{
+        selection_decision_id: selection.id,
+        asset_version_id: selection.asset_version_id,
+        placeholder: false
+      })
+      |> Repo.update()
+    else
+      {:error, :shot_selection_required}
+    end
   end
 
   def replace_clip(%Clip{}, %SelectionDecision{}), do: {:error, :selection_not_active}

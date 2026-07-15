@@ -20,6 +20,17 @@ defmodule Dramatizer.Projects.ModelOverride do
     override
     |> cast(attrs, [:project_id, :task_type, :adapter, :credential_ref, :model, :params])
     |> validate_required([:project_id, :task_type, :params])
+    |> validate_change(:params, &validate_params/2)
     |> unique_constraint([:project_id, :task_type])
+  end
+
+  defp validate_params(:params, params) do
+    candidate_count = Map.get(params, "candidate_count", Map.get(params, :candidate_count))
+
+    if is_nil(candidate_count) or (is_integer(candidate_count) and candidate_count > 0) do
+      []
+    else
+      [params: "must be a positive integer"]
+    end
   end
 end
