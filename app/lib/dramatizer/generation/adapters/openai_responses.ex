@@ -20,7 +20,7 @@ defmodule Dramatizer.Generation.Adapters.OpenAIResponses do
       body =
         %{
           "model" => snapshot.model,
-          "input" => Map.fetch!(input, "input"),
+          "input" => input |> Map.fetch!("input") |> provider_input(),
           "store" => false,
           "text" => %{
             "format" => %{
@@ -111,6 +111,20 @@ defmodule Dramatizer.Generation.Adapters.OpenAIResponses do
     do: Map.put(body, "reasoning", reasoning)
 
   defp maybe_put_reasoning(body, _params), do: body
+
+  defp provider_input(value) when is_list(value), do: Enum.map(value, &provider_input/1)
+
+  defp provider_input(%{"type" => "input_image"} = value),
+    do: Map.take(value, ["type", "image_url", "detail"])
+
+  defp provider_input(%{"type" => "input_text"} = value),
+    do: Map.take(value, ["type", "text"])
+
+  defp provider_input(value) when is_map(value) do
+    Map.new(value, fn {key, nested} -> {key, provider_input(nested)} end)
+  end
+
+  defp provider_input(value), do: value
 
   defp map_transport_error(reason) when reason in [:timeout, :etimedout],
     do: {:error, :provider_timeout, %{reason: reason}}

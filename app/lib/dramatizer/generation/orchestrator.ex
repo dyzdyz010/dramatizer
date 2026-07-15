@@ -102,8 +102,7 @@ defmodule Dramatizer.Generation.Orchestrator do
              "generation_spec_id" => spec.id,
              "candidate_index" => spec.candidate_index
            }),
-         {:ok, technical} <- Quality.run_technical(asset, spec),
-         {:ok, semantic} <- maybe_run_semantic(technical, asset, spec),
+         {:ok, qc} <- Quality.after_finalize(asset, spec, project),
          {:ok, succeeded} <-
            Generation.transition_attempt(attempt, :succeeded, %{
              external_request_id: provider_result.external_request_id,
@@ -115,7 +114,7 @@ defmodule Dramatizer.Generation.Orchestrator do
                "cost_micros" => provider_result.cost_micros
              }
            }) do
-      {:ok, result(spec, snapshot, succeeded, asset, technical, semantic)}
+      {:ok, result(spec, snapshot, succeeded, asset, qc.technical, qc.semantic)}
     else
       {:error, reason} ->
         mark_internal_failure(attempt, reason)
@@ -176,11 +175,6 @@ defmodule Dramatizer.Generation.Orchestrator do
       {:ok, actual_entry}
     end
   end
-
-  defp maybe_run_semantic(%{status: :pass}, asset, spec),
-    do: Quality.run_semantic_fixture(asset, spec)
-
-  defp maybe_run_semantic(_technical, _asset, _spec), do: {:ok, nil}
 
   defp mark_internal_failure(%Attempt{} = attempt, reason) do
     case Repo.get!(Attempt, attempt.id) do

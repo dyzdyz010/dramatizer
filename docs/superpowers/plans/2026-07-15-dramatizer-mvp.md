@@ -318,13 +318,13 @@ POST /v1/images/edits        multipart: model, image[], prompt, optional mask
 - Test: `app/test/dramatizer/quality/technical_qc_test.exs`
 - Test: `app/test/dramatizer/quality/semantic_qc_test.exs`
 
-- [ ] Test technical checks for decode, file integrity, format, exact/profile aspect tolerance, minimum dimensions, and hard selection block.
-- [ ] Test semantic evidence dimensions independently: identity/variant, wardrobe, location, light, prop, must/forbid, composition, camera, action, expression, style, artifact; each has status/confidence/reason/advice.
-- [ ] Build the semantic QC request from exact Spec/reference images and only direct selected neighbors; use OpenAI Responses multimodal `input_image` data URLs and strict structured output.
-- [ ] Test evaluator failed/unavailable and semantic fail/warning/inconclusive never hard-block technically valid selection; accepting a semantic fail may carry an optional note.
-- [ ] Trigger technical QC after finalize and semantic QC for every technically valid candidate without auto-selection or regeneration.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer/quality; Pop-Location`.
-- [ ] Commit: `feat: add evidence based image quality checks`.
+- [x] Test technical checks for decode, file integrity, format, exact/profile aspect tolerance, minimum dimensions, and hard selection block.
+- [x] Test semantic evidence dimensions independently: identity/variant, wardrobe, location, light, prop, must/forbid, composition, camera, action, expression, style, artifact; each has status/confidence/reason/advice.
+- [x] Build the semantic QC request from exact Spec/reference images and only direct selected neighbors; use OpenAI Responses multimodal `input_image` data URLs and strict structured output.
+- [x] Test evaluator failed/unavailable and semantic fail/warning/inconclusive never hard-block technically valid selection; accepting a semantic fail may carry an optional note.
+- [x] Trigger technical QC after finalize and semantic QC for every technically valid candidate without auto-selection or regeneration.
+- [x] Verify: `Push-Location app; mix test test/dramatizer/quality; Pop-Location`.
+- [x] Commit: `feat: add evidence based image quality checks`.
 
 ### Task 11: Implement dependency freshness, ChangeSet, and bounded recomputation
 

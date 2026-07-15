@@ -138,8 +138,7 @@ defmodule Dramatizer.Visuals.ReferenceWorkflow do
              "mask_asset_id" => prepared.spec.payload["mask_asset_id"],
              "formal" => prepared.spec.formal
            }),
-         {:ok, technical} <- Quality.run_technical(asset, prepared.spec),
-         {:ok, _semantic} <- maybe_semantic(technical, asset, prepared.spec),
+         {:ok, _qc} <- Quality.after_finalize(asset, prepared.spec, project),
          {:ok, _succeeded} <-
            Generation.transition_attempt(submitted, :succeeded, %{
              result_asset_id: asset.id,
@@ -193,11 +192,6 @@ defmodule Dramatizer.Visuals.ReferenceWorkflow do
 
   defp ensure_submitted(%Attempt{status: :submitted} = attempt), do: {:ok, attempt}
   defp ensure_submitted(%Attempt{}), do: {:error, :attempt_not_finalizable}
-
-  defp maybe_semantic(%{status: :pass}, asset, spec),
-    do: Quality.run_semantic_fixture(asset, spec)
-
-  defp maybe_semantic(_technical, _asset, _spec), do: {:ok, nil}
 
   defp prompt_snapshot(compilation) do
     %{
