@@ -298,13 +298,13 @@ POST /v1/images/generations  JSON: model, prompt, size, quality, output_format
 POST /v1/images/edits        multipart: model, image[], prompt, optional mask
 ```
 
-- [ ] Contract-test generation and multipart edit requests against a local Plug stub, including `gpt-image-2`, base64 decode, request ID/error mapping, and metadata/usage capture.
-- [ ] Implement default counts (reference 4, shot 2) with system/Project/task precedence and freeze the effective value in each request snapshot.
-- [ ] Compile controlled provider prompts from Chinese authority and exact references; preserve Chinese input/template/compiler links and never overwrite Chinese revisions.
-- [ ] Route user uploads and AI bytes through identical AssetStore finalize; edits create child assets/specs/attempts and leave parent hashes unchanged; retain mask lineage without canvas UI.
-- [ ] Mark exploratory outputs as ineligible for formal Timeline and require new formal Spec/Attempt when promoted.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer/generation/openai_images_test.exs test/dramatizer/visuals/reference_workflow_test.exs; Pop-Location`.
-- [ ] Commit: `feat: add OpenAI image and reference production`.
+- [x] Contract-test generation and multipart edit requests against a local Plug stub, including `gpt-image-2`, base64 decode, request ID/error mapping, and metadata/usage capture.
+- [x] Implement default counts (reference 4, shot 2) with system/Project/task precedence and freeze the effective value in each request snapshot.
+- [x] Compile controlled provider prompts from Chinese authority and exact references; preserve Chinese input/template/compiler links and never overwrite Chinese revisions.
+- [x] Route user uploads and AI bytes through identical AssetStore finalize; edits create child assets/specs/attempts and leave parent hashes unchanged; retain mask lineage without canvas UI.
+- [x] Mark exploratory outputs as ineligible for formal Timeline and require new formal Spec/Attempt when promoted.
+- [x] Verify: `Push-Location app; mix test test/dramatizer/generation/openai_images_test.exs test/dramatizer/visuals/reference_workflow_test.exs; Pop-Location`.
+- [x] Commit: `feat: add OpenAI image and reference production`.
 
 ### Task 10: Implement technical and multimodal semantic QC
 

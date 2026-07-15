@@ -66,7 +66,7 @@ defmodule Dramatizer.Projects do
   end
 
   def put_model_override(%Project{id: project_id}, task_type, attrs) do
-    with :ok <- Catalog.validate_task_type(task_type) do
+    with :ok <- validate_model_task_type(task_type) do
       values =
         attrs
         |> Map.new()
@@ -129,6 +129,16 @@ defmodule Dramatizer.Projects do
 
   defp profile_for_project!(project_id) do
     Repo.get_by!(ProductionProfile, project_id: project_id)
+  end
+
+  defp validate_model_task_type(task_type) do
+    if :dramatizer
+       |> Application.fetch_env!(:model_defaults)
+       |> Map.has_key?(task_type) do
+      :ok
+    else
+      {:error, :unknown_model_task_type}
+    end
   end
 
   defp unwrap_transaction({:ok, value}), do: {:ok, value}

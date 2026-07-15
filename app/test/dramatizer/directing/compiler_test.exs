@@ -71,7 +71,9 @@ defmodule Dramatizer.Directing.CompilerTest do
                  visual_design: visual,
                  reference_set: references,
                  shot_plan: shot_draft
-               }, source_revision_ids: [source.id])
+               },
+               source_revision_ids: [source.id]
+             )
 
     assert {:ok, shot_plan} = Revisions.confirm_draft(shot_draft.id)
 

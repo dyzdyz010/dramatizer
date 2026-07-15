@@ -48,6 +48,10 @@ image_model = %{
   params: %{"quality" => "medium", "size" => "1024x1536"}
 }
 
+reference_image_model = put_in(image_model, [:params, "candidate_count"], 4)
+shot_image_model = put_in(image_model, [:params, "candidate_count"], 2)
+edit_image_model = put_in(image_model, [:params, "candidate_count"], 1)
+
 config :dramatizer, :model_defaults, %{
   people_relations: text_model,
   places_props_world: text_model,
@@ -59,9 +63,9 @@ config :dramatizer, :model_defaults, %{
   image_prompt: text_model,
   structured_repair: text_model,
   semantic_qc: text_model,
-  reference_image: image_model,
-  shot_keyframe: image_model,
-  image_edit: image_model
+  reference_image: reference_image_model,
+  shot_keyframe: shot_image_model,
+  image_edit: edit_image_model
 }
 
 config :dramatizer, :model_context_windows, %{
