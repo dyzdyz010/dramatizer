@@ -52,4 +52,30 @@ defmodule Dramatizer.RevisionsTest do
       )
     end
   end
+
+  test "a narrative episode override is frozen into its revision profile snapshot" do
+    assert {:ok, project} = Projects.create_project(%{name: "单集规格覆盖"})
+
+    assert {:ok, draft} =
+             Revisions.create_draft(
+               project,
+               :narrative,
+               %{
+                 "title" => "加长集",
+                 "production_profile_override" => %{
+                   "duration_min_seconds" => 90,
+                   "duration_max_seconds" => 150,
+                   "shot_max" => 36
+                 }
+               },
+               %{}
+             )
+
+    assert {:ok, revision} = Revisions.confirm_draft(draft.id)
+    revision = Repo.get!(Revision, revision.id)
+    assert revision.profile_snapshot["duration_min_seconds"] == 90
+    assert revision.profile_snapshot["duration_max_seconds"] == 150
+    assert revision.profile_snapshot["shot_max"] == 36
+    assert Projects.effective_profile(project).duration_min_seconds == 60
+  end
 end

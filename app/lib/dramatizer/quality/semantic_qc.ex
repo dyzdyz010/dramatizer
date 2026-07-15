@@ -1,16 +1,19 @@
 defmodule Dramatizer.Quality.SemanticQC do
   @moduledoc "Multimodal, evidence-preserving, non-blocking semantic image evaluation."
 
+  import Ecto.Query
+
   alias Dramatizer.Assets
   alias Dramatizer.Assets.AssetVersion
   alias Dramatizer.CanonicalJSON
   alias Dramatizer.Costs
   alias Dramatizer.Generation
   alias Dramatizer.Generation.Adapters.OpenAIResponses
-  alias Dramatizer.Generation.GenerationSpec
+  alias Dramatizer.Generation.{Attempt, GenerationSpec}
   alias Dramatizer.Projects.Project
   alias Dramatizer.Quality
-  alias Dramatizer.Quality.SelectionDecision
+  alias Dramatizer.Quality.{QualityReport, SelectionDecision}
+  alias Dramatizer.Repo
 
   @dimensions ~w(identity_variant wardrobe location lighting key_props must_forbid composition camera action expression style artifacts)
   @statuses ~w(pass fail warning inconclusive)
@@ -51,8 +54,21 @@ defmodule Dramatizer.Quality.SemanticQC do
                "quality_schema_hash" => CanonicalJSON.hash(schema),
                "quality_schema_version" => "image-semantic-qc-v1"
              }
-           }),
-         {:ok, reservation} <-
+           }) do
+      dispatch_attempt(asset, target_spec, project, snapshot, attempt, evaluator, evaluation_key)
+    end
+  end
+
+  defp dispatch_attempt(
+         asset,
+         target_spec,
+         project,
+         snapshot,
+         %Attempt{status: :prepared} = attempt,
+         evaluator,
+         evaluation_key
+       ) do
+    with {:ok, reservation} <-
            Costs.reserve_provider_attempt(project, snapshot, attempt, :openai),
          {:ok, submitted} <- Generation.transition_attempt(attempt, :submitted) do
       case evaluator.(snapshot, submitted) do
@@ -84,6 +100,52 @@ defmodule Dramatizer.Quality.SemanticQC do
       end
     end
   end
+
+  defp dispatch_attempt(
+         _asset,
+         _target_spec,
+         _project,
+         snapshot,
+         %Attempt{status: :succeeded},
+         _evaluator,
+         _evaluation_key
+       ) do
+    case Repo.one(
+           from report in QualityReport,
+             where: report.evaluator_request_snapshot_id == ^snapshot.id,
+             order_by: [desc: report.inserted_at],
+             limit: 1
+         ) do
+      %QualityReport{} = report -> {:ok, report}
+      nil -> {:error, :semantic_report_missing_for_succeeded_attempt}
+    end
+  end
+
+  defp dispatch_attempt(
+         asset,
+         target_spec,
+         project,
+         snapshot,
+         %Attempt{status: status} = attempt,
+         evaluator,
+         evaluation_key
+       )
+       when status in [:failed, :timed_out] do
+    with {:ok, retry} <- Generation.retry_attempt(attempt) do
+      dispatch_attempt(asset, target_spec, project, snapshot, retry, evaluator, evaluation_key)
+    end
+  end
+
+  defp dispatch_attempt(
+         _asset,
+         _target_spec,
+         _project,
+         _snapshot,
+         %Attempt{status: status},
+         _evaluator,
+         _evaluation_key
+       ),
+       do: {:error, {:semantic_attempt_not_runnable, status}}
 
   defp persist_evaluation(asset, target_spec, snapshot, attempt, result, evaluation_key) do
     case validate_output(result.output) do

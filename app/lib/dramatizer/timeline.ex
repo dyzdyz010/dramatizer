@@ -131,6 +131,43 @@ defmodule Dramatizer.Timeline do
   def set_transition(%Clip{}, _transition, _duration),
     do: {:error, :transition_duration_out_of_bounds}
 
+  def update_clip(%Clip{} = clip, attrs) when is_map(attrs) do
+    duration = Map.fetch!(attrs, :duration_ms)
+    motion = Map.fetch!(attrs, :motion)
+    transition = Map.fetch!(attrs, :transition_after)
+    transition_duration = Map.fetch!(attrs, :transition_duration_ms)
+
+    cond do
+      not (is_integer(duration) and duration > 0) ->
+        {:error, :invalid_clip_duration}
+
+      motion not in [:static, :push_in, :pull_out, :pan_left, :pan_right, :pan_up, :pan_down] ->
+        {:error, :invalid_motion}
+
+      transition == :hard_cut and transition_duration != 0 ->
+        {:error, :hard_cut_duration_must_be_zero}
+
+      transition == :cross_dissolve and transition_duration not in 100..1_000 ->
+        {:error, :transition_duration_out_of_bounds}
+
+      transition not in [:hard_cut, :cross_dissolve] ->
+        {:error, :invalid_transition}
+
+      true ->
+        warning = duration < clip.minimum_duration_ms or duration > clip.maximum_duration_ms
+
+        clip
+        |> Clip.edit_changeset(%{
+          duration_ms: duration,
+          duration_warning: warning,
+          motion: motion,
+          transition_after: transition,
+          transition_duration_ms: transition_duration
+        })
+        |> Repo.update()
+    end
+  end
+
   def move_clip(%Timeline{} = timeline, clip_id, new_position)
       when is_integer(new_position) and new_position > 0 do
     clips = list_clips(timeline)

@@ -47,7 +47,7 @@ defmodule Dramatizer.Generation.Orchestrator do
 
     %{
       provider: :fake,
-      reference_assets: [],
+      reference_assets: Keyword.get(opts, :reference_assets, []),
       opts: opts,
       prepare_options: %{
         task_override: %{adapter: "fake", credential_ref: "none", model: "fake-v1"},
@@ -170,7 +170,14 @@ defmodule Dramatizer.Generation.Orchestrator do
     submitter.(snapshot, attempt)
   end
 
-  defp complete_success(spec, project, snapshot, attempt, provider_result, %{provider: :fake}) do
+  defp complete_success(
+         spec,
+         project,
+         snapshot,
+         attempt,
+         provider_result,
+         %{provider: :fake} = context
+       ) do
     with :ok <- record_callbacks(provider_result),
          {:ok, _actual} <-
            record_cost(project, attempt, provider_result.cost_micros, :estimated, "fake"),
@@ -192,7 +199,7 @@ defmodule Dramatizer.Generation.Orchestrator do
                  "cost_micros" => provider_result.cost_micros
                }
              },
-             [],
+             context.reference_assets,
              []
            ) do
       {:ok, completed}
@@ -271,6 +278,8 @@ defmodule Dramatizer.Generation.Orchestrator do
              "generation_spec_id" => spec.id,
              "candidate_index" => spec.candidate_index,
              "reference_asset_ids" => Enum.map(reference_assets, & &1.id),
+             "parent_asset_id" => spec.payload["parent_asset_id"],
+             "mask_asset_id" => spec.payload["mask_asset_id"],
              "formal" => spec.formal
            }),
          {:ok, qc} <- Quality.after_finalize(asset, spec, project, qc_opts),

@@ -193,6 +193,33 @@ defmodule Dramatizer.Quality.SemanticQCTest do
     assert Enum.find(entries, &(&1.entry_type == :actual)).amount_micros == nil
   end
 
+  test "duplicate semantic QC submission reuses the completed attempt without an external effect",
+       context do
+    test_pid = self()
+
+    evaluator = fn _snapshot, _attempt ->
+      send(test_pid, :evaluator_called)
+
+      {:ok,
+       %{
+         output: semantic_output("pass"),
+         external_request_id: "semantic-idempotent-1",
+         request_id: "req-semantic-idempotent-1",
+         usage: %{}
+       }}
+    end
+
+    opts = [evaluator: evaluator, evaluation_key: "idempotent"]
+    assert {:ok, first} = SemanticQC.run(context.candidate, context.spec, context.project, opts)
+    assert_receive :evaluator_called
+
+    assert {:ok, replayed} =
+             SemanticQC.run(context.candidate, context.spec, context.project, opts)
+
+    assert replayed.id == first.id
+    refute_receive :evaluator_called, 50
+  end
+
   defp semantic_output(status) do
     %{
       "dimensions" =>

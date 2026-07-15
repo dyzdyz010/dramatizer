@@ -5,6 +5,7 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
   attr :clips, :list, default: []
   attr :subtitles, :list, default: []
   attr :renders, :list, default: []
+  attr :selections, :list, default: []
 
   def timeline_editor(assigns) do
     ~H"""
@@ -52,8 +53,77 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
                 →
               </button>
             </div>
+            <form
+              id={"clip-#{clip.id}"}
+              phx-submit="update-clip"
+              phx-value-id={clip.id}
+              class="clip-editor"
+            >
+              <label>
+                <span>时长 ms</span>
+                <input type="number" min="1" name="clip[duration_ms]" value={clip.duration_ms} />
+              </label>
+              <label>
+                <span>运动</span>
+                <select name="clip[motion]">
+                  <option
+                    :for={motion <- motions()}
+                    value={motion}
+                    selected={to_string(clip.motion) == motion}
+                  >
+                    {motion_label(String.to_existing_atom(motion))}
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>转场</span>
+                <select name="clip[transition_after]">
+                  <option value="hard_cut" selected={clip.transition_after == :hard_cut}>硬切</option>
+                  <option value="cross_dissolve" selected={clip.transition_after == :cross_dissolve}>
+                    叠化
+                  </option>
+                </select>
+              </label>
+              <label>
+                <span>转场 ms</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="1000"
+                  name="clip[transition_duration_ms]"
+                  value={clip.transition_duration_ms}
+                />
+              </label>
+              <button type="submit" class="btn btn-ghost">保存镜头参数</button>
+            </form>
+            <form
+              :if={@selections != []}
+              id={"replace-clip-#{clip.id}"}
+              phx-submit="replace-clip"
+              phx-value-id={clip.id}
+              class="clip-replacement"
+            >
+              <select name="replacement[selection_id]">
+                <option :for={selection <- @selections} value={selection.id}>
+                  {selection.slot_key}
+                </option>
+              </select>
+              <button type="submit" class="btn btn-ghost">替换主图</button>
+            </form>
+            <button
+              type="button"
+              class="btn btn-ghost"
+              phx-click="remove-clip"
+              phx-value-id={clip.id}
+            >
+              移除镜头
+            </button>
           </article>
         </div>
+
+        <button type="button" class="btn btn-soft" phx-click="add-placeholder-clip">
+          添加占位镜头
+        </button>
 
         <div class="subtitle-list">
           <.form
@@ -74,8 +144,23 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
                 class="input w-full"
               />
             </label>
-            <input type="hidden" name="cue[start_ms]" value={cue.start_ms} />
-            <input type="hidden" name="cue[end_ms]" value={cue.end_ms} />
+            <label>
+              <span>开始 ms</span>
+              <input type="number" min="0" name="cue[start_ms]" value={cue.start_ms} />
+            </label>
+            <label>
+              <span>结束 ms</span>
+              <input type="number" min="1" name="cue[end_ms]" value={cue.end_ms} />
+            </label>
+            <label>
+              <span>位置</span>
+              <select name="cue[position]">
+                <option value="safe_bottom" selected={cue.style["position"] == "safe_bottom"}>
+                  安全区下方
+                </option>
+                <option value="safe_top" selected={cue.style["position"] == "safe_top"}>安全区上方</option>
+              </select>
+            </label>
             <button class="btn btn-ghost" type="submit">保存</button>
           </.form>
         </div>
@@ -126,6 +211,8 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
   defp motion_label(:pan_right), do: "右移"
   defp motion_label(:pan_up), do: "上移"
   defp motion_label(:pan_down), do: "下移"
+
+  defp motions, do: ~w(static push_in pull_out pan_left pan_right pan_up pan_down)
 
   defp render_state(:rendered), do: :ready
   defp render_state(:failed), do: :failed

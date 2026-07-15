@@ -61,11 +61,16 @@ defmodule DramatizerWeb.Live.Components.RunPanel do
   defp attempt_status(_), do: :empty
 
   defp format_cost(costs) do
-    micros =
-      costs
-      |> Enum.filter(&(&1.entry_type == :actual))
-      |> Enum.reduce(0, &((&1.amount_micros || 0) + &2))
+    actuals = Enum.filter(costs, &(&1.entry_type == :actual))
+    known = Enum.filter(actuals, &is_integer(&1.amount_micros))
+    unknown? = Enum.any?(actuals, &is_nil(&1.amount_micros))
+    micros = Enum.reduce(known, 0, &(&1.amount_micros + &2))
+    formatted = "$" <> :erlang.float_to_binary(micros / 1_000_000, decimals: 6)
 
-    "$" <> :erlang.float_to_binary(micros / 1_000_000, decimals: 6)
+    cond do
+      unknown? and known == [] -> "实际费用未返回"
+      unknown? -> formatted <> " + 未返回项"
+      true -> formatted
+    end
   end
 end

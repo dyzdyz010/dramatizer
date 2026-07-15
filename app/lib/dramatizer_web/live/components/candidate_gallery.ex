@@ -66,9 +66,10 @@ defmodule DramatizerWeb.Live.Components.CandidateGallery do
                   attempt -> "#{attempt.adapter} · #{attempt.model} · 尝试 #{attempt.attempt_number}"
                 end}
               </span>
-              <strong>
+              <strong :if={is_integer(candidate.cost_micros)}>
                 ${:erlang.float_to_binary(candidate.cost_micros / 1_000_000, decimals: 6)}
               </strong>
+              <strong :if={is_nil(candidate.cost_micros)}>实际费用未返回</strong>
             </div>
             <button
               type="button"
@@ -78,10 +79,30 @@ defmodule DramatizerWeb.Live.Components.CandidateGallery do
               phx-value-asset-id={candidate.asset.id}
               phx-value-spec-id={candidate.spec_id}
               phx-value-slot-key={candidate.slot_key}
+              data-candidate-index={candidate.index}
               disabled={candidate.technical != :pass || candidate.selected}
             >
               {if candidate.selected, do: "当前选择", else: "选择此候选"}
             </button>
+            <form
+              id={"edit-candidate-#{candidate.asset.id}"}
+              phx-submit="edit-candidate"
+              phx-value-asset-id={candidate.asset.id}
+              phx-value-spec-id={candidate.spec_id}
+              phx-value-slot-key={candidate.slot_key}
+              class="candidate-edit"
+            >
+              <label>
+                <span>编辑提示词</span>
+                <input
+                  type="text"
+                  name="edit[instruction]"
+                  placeholder="例如：加强雨水反光，保持人物身份"
+                  required
+                />
+              </label>
+              <button type="submit" class="btn btn-ghost w-full">生成不可变编辑版本</button>
+            </form>
           </div>
         </article>
       </div>

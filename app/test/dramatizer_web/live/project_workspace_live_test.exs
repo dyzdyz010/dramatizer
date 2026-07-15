@@ -4,14 +4,16 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
   import Phoenix.LiveViewTest
   import Ecto.Query
 
+  alias Dramatizer.Assets
   alias Dramatizer.Projects
   alias Dramatizer.Assets.AssetVersion
+  alias Dramatizer.Costs
   alias Dramatizer.Costs.CostEntry
-  alias Dramatizer.Generation.Attempt
+  alias Dramatizer.Generation.{Attempt, GenerationSpec}
   alias Dramatizer.Quality.SelectionDecision
   alias Dramatizer.Revisions.Draft
   alias Dramatizer.Sources.SourceRevision
-  alias Dramatizer.Timeline.{RenderManifest, Timeline}
+  alias Dramatizer.Timeline.{Clip, RenderManifest, SubtitleCue, Timeline}
   alias Dramatizer.Workflow.InboxMessage
   alias Dramatizer.Repo
 
@@ -60,6 +62,74 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     for state <- ~w(empty loading failed ready waiting_user stale) do
       assert has_element?(view, "#state-legend [data-state='#{state}']")
     end
+  end
+
+  test "project settings expose editable profile, model overrides, appendices, and rename", %{
+    conn: conn,
+    project: project
+  } do
+    assert {:ok, reservation} = Costs.reserve(project, 0, "ui-unknown-cost")
+    assert {:ok, _actual} = Costs.settle(reservation, nil, %{provider: "openai"})
+
+    {:ok, runs, html} = live(conn, "/projects/#{project.id}/runs")
+    refute html =~ "中文权威视觉数据到图像 Provider 提示词的受控编译器"
+    assert html =~ "实际费用未返回"
+
+    runs
+    |> form("#production-profile-form",
+      profile: %{
+        aspect_width: "9",
+        aspect_height: "16",
+        duration_min_seconds: "75",
+        duration_max_seconds: "105",
+        shot_min: "12",
+        shot_max: "24",
+        preview_width: "540",
+        preview_height: "960",
+        formal_width: "1080",
+        formal_height: "1920"
+      }
+    )
+    |> render_submit()
+
+    profile = Projects.effective_profile(project)
+    assert profile.duration_min_seconds == 75
+    assert profile.shot_max == 24
+
+    runs
+    |> form("#model-override-form",
+      model_override: %{
+        task_type: "shot_keyframe",
+        model: "gpt-image-2",
+        params: ~s({"candidate_count":3,"quality":"high"})
+      }
+    )
+    |> render_submit()
+
+    override = Projects.model_override(project, :shot_keyframe)
+    assert override.model == "gpt-image-2"
+    assert override.params["candidate_count"] == 3
+    assert override.params["quality"] == "high"
+
+    runs
+    |> form("#prompt-appendix-form",
+      prompt_appendix: %{
+        task_type: "image_prompt",
+        body: "加强人物与场景可生成细节，但保持中文权威数据。"
+      }
+    )
+    |> render_submit()
+
+    appendix = Projects.current_prompt_appendix(project, :image_prompt)
+    assert appendix.revision == 1
+    assert appendix.body =~ "可生成细节"
+
+    runs
+    |> form("#rename-project-form", project: %{name: "网页制作流·修订"})
+    |> render_submit()
+
+    assert Projects.get_project!(project.id).name == "网页制作流·修订"
+    assert render(runs) =~ "网页制作流·修订"
   end
 
   test "direct LiveView text upload is consumed into the source parser", %{
@@ -151,6 +221,95 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
   end
 
   @tag timeout: 180_000
+  test "visual workspace generates reference candidates, records explicit choices, and edits immutably",
+       %{conn: conn, project: project} do
+    {:ok, source, _html} = live(conn, "/projects/#{project.id}/source")
+    upload_text(source, "reference-story.txt", "林夏在雨夜车站打开一封匿名信。")
+
+    {:ok, analysis, _html} = live(conn, "/projects/#{project.id}/analysis")
+    analysis |> element("button", "启动全文分析") |> render_click()
+
+    {:ok, episodes, _html} = live(conn, "/projects/#{project.id}/episodes")
+    episodes |> element("button[phx-click='select-episode']") |> render_click()
+    narrative = Repo.get_by!(Draft, project_id: project.id, kind: :narrative, status: :editing)
+    episodes |> element("button[phx-value-id='#{narrative.id}']", "确认并冻结") |> render_click()
+
+    {:ok, visuals, _html} = live(conn, "/projects/#{project.id}/visuals")
+
+    objects = [
+      %{
+        "id" => "prop:letter",
+        "type" => "prop",
+        "name" => "匿名信",
+        "key" => true,
+        "variants" => [%{"id" => "sealed", "material" => "旧纸"}]
+      }
+    ]
+
+    visuals
+    |> form("form[phx-submit='create-visual-design']",
+      visual: %{objects: Jason.encode!(objects)}
+    )
+    |> render_submit()
+
+    visual = Repo.get_by!(Draft, project_id: project.id, kind: :visual_design, status: :editing)
+    visuals |> element("button[phx-value-id='#{visual.id}']", "确认并冻结") |> render_click()
+    visuals |> element("button", "AI 生成参考候选") |> render_click()
+
+    assert Repo.aggregate(
+             from(spec in GenerationSpec,
+               where: spec.project_id == ^project.id and spec.kind == "reference_image"
+             ),
+             :count
+           ) == 8
+
+    assert has_element?(visuals, ".candidate-card")
+
+    for slot <- ~w(overall key_detail_state) do
+      slot_key = "reference:prop:letter/sealed/#{slot}"
+
+      visuals
+      |> element(
+        "button[phx-click='select-candidate'][phx-value-slot-key='#{slot_key}'][data-candidate-index='0']",
+        "选择此候选"
+      )
+      |> render_click()
+    end
+
+    visuals |> element("button", "从已选主图创建 ReferenceSet") |> render_click()
+
+    assert Repo.get_by!(Draft,
+             project_id: project.id,
+             kind: :reference_set,
+             status: :editing
+           )
+
+    parent =
+      Repo.one!(
+        from asset in AssetVersion,
+          where: asset.project_id == ^project.id and asset.kind == "reference_image",
+          order_by: [asc: asset.inserted_at],
+          limit: 1
+      )
+
+    visuals
+    |> form("#edit-candidate-#{parent.id}", edit: %{instruction: "信封边缘增加雨水浸湿痕迹"})
+    |> render_submit()
+
+    child =
+      Repo.one!(
+        from asset in AssetVersion,
+          where: asset.parent_asset_id == ^parent.id,
+          order_by: [desc: asset.inserted_at],
+          limit: 1
+      )
+
+    assert child.blob_hash != parent.blob_hash
+    assert child.lineage["parent_asset_id"] == parent.id
+    assert Assets.get_asset!(parent.id).blob_hash == parent.blob_hash
+  end
+
+  @tag timeout: 180_000
   test "all primary human gates reach a rendered formal animatic through LiveView", %{
     conn: conn,
     project: project
@@ -235,7 +394,46 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
 
     {:ok, timeline_view, _html} = live(conn, "/projects/#{project.id}/timeline")
     timeline_view |> element("button", "从已确认输入创建") |> render_click()
-    assert Repo.get_by!(Timeline, project_id: project.id)
+    timeline = Repo.get_by!(Timeline, project_id: project.id)
+    first_clip = Repo.one!(from clip in Clip, where: clip.timeline_id == ^timeline.id, limit: 1)
+
+    timeline_view
+    |> form("#clip-#{first_clip.id}",
+      clip: %{
+        duration_ms: "2350",
+        motion: "pan_right",
+        transition_after: "cross_dissolve",
+        transition_duration_ms: "500"
+      }
+    )
+    |> render_submit()
+
+    edited_clip = Repo.get!(Clip, first_clip.id)
+    assert edited_clip.duration_ms == 2350
+    assert edited_clip.motion == :pan_right
+    assert edited_clip.transition_after == :cross_dissolve
+    assert edited_clip.transition_duration_ms == 500
+
+    first_cue =
+      Repo.one!(from cue in SubtitleCue, where: cue.timeline_id == ^timeline.id, limit: 1)
+
+    timeline_view
+    |> form("#subtitle-#{first_cue.id}",
+      cue: %{text: "字幕已细调。", start_ms: "200", end_ms: "1500", position: "safe_top"}
+    )
+    |> render_submit()
+
+    edited_cue = Repo.get!(SubtitleCue, first_cue.id)
+    assert edited_cue.text == "字幕已细调。"
+    assert edited_cue.start_ms == 200
+    assert edited_cue.end_ms == 1500
+    assert edited_cue.style["position"] == "safe_top"
+
+    timeline_view |> element("button", "添加占位镜头") |> render_click()
+
+    assert Repo.aggregate(from(clip in Clip, where: clip.timeline_id == ^timeline.id), :count) ==
+             4
+
     timeline_view |> element("button", "冻结并正式导出") |> render_click()
 
     rendered = Repo.get_by!(RenderManifest, project_id: project.id, render_mode: :formal)

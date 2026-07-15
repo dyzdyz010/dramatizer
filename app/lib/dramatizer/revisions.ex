@@ -70,7 +70,8 @@ defmodule Dramatizer.Revisions do
               draft_id: draft.id,
               payload: draft.payload,
               provenance: draft.provenance,
-              profile_snapshot: Projects.profile_snapshot(project),
+              profile_snapshot:
+                Projects.profile_snapshot(project, episode_profile_override(draft)),
               content_hash: content_hash
             })
             |> Repo.insert!()
@@ -104,4 +105,16 @@ defmodule Dramatizer.Revisions do
   end
 
   def get_revision!(id), do: Repo.get!(Revision, id)
+
+  defp episode_profile_override(%Draft{kind: :narrative, payload: payload}) do
+    override = Map.get(payload, "production_profile_override", %{})
+
+    Map.new(Projects.ProductionProfile.fields(), fn field ->
+      {field, Map.get(override, Atom.to_string(field), Map.get(override, field))}
+    end)
+    |> Enum.reject(fn {_field, value} -> is_nil(value) end)
+    |> Map.new()
+  end
+
+  defp episode_profile_override(%Draft{}), do: %{}
 end

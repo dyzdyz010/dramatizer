@@ -22,6 +22,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   }
 
   alias Dramatizer.Projects
+  alias Dramatizer.Prompts.Catalog
   alias Dramatizer.Quality
   alias Dramatizer.Quality.{QualityReport, SelectionDecision}
   alias Dramatizer.Repo
@@ -30,7 +31,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   alias Dramatizer.Sources
   alias Dramatizer.Sources.SourceRevision
   alias Dramatizer.Timeline, as: TimelineContext
-  alias Dramatizer.Timeline.{RenderManifest, RenderRecipe, SubtitleCue}
+  alias Dramatizer.Timeline.{Clip, RenderManifest, RenderRecipe, SubtitleCue}
   alias Dramatizer.Timeline.Timeline, as: TimelineRecord
   alias Dramatizer.Visuals
   alias Dramatizer.Workflow
@@ -77,6 +78,65 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
   @impl Phoenix.LiveView
   def handle_event("validate-upload", _params, socket), do: {:noreply, socket}
+
+  def handle_event("rename-project", %{"project" => %{"name" => name}}, socket) do
+    result = Projects.rename_project(socket.assigns.project, String.trim(name))
+
+    socket =
+      case result do
+        {:ok, project} ->
+          socket
+          |> assign(:project, project)
+          |> put_flash(:info, "项目名称已更新。")
+          |> load_workspace()
+
+        {:error, reason} ->
+          put_flash(socket, :error, human_error(reason))
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_event("update-production-profile", %{"profile" => attrs}, socket) do
+    result = Projects.update_production_profile(socket.assigns.project, attrs)
+    {:noreply, result_flash(socket, result, "项目 ProductionProfile 已更新。") |> load_workspace()}
+  end
+
+  def handle_event(
+        "put-model-override",
+        %{"model_override" => %{"task_type" => task_type, "model" => model, "params" => params}},
+        socket
+      ) do
+    result =
+      with {:ok, task} <- model_task_type(task_type),
+           {:ok, decoded} when is_map(decoded) <- Jason.decode(params) do
+        Projects.put_model_override(socket.assigns.project, task, %{
+          model: blank_to_nil(model),
+          params: decoded
+        })
+      else
+        _ -> {:error, :invalid_model_override}
+      end
+
+    {:noreply, result_flash(socket, result, "项目模型覆盖已保存。") |> load_workspace()}
+  end
+
+  def handle_event(
+        "create-prompt-appendix",
+        %{"prompt_appendix" => %{"task_type" => task_type, "body" => body}},
+        socket
+      ) do
+    result =
+      with {:ok, task} <- prompt_task_type(task_type),
+           false <- String.trim(body) == "" do
+        Projects.create_prompt_appendix(socket.assigns.project, task, String.trim(body))
+      else
+        true -> {:error, :prompt_appendix_required}
+        error -> error
+      end
+
+    {:noreply, result_flash(socket, result, "PromptAppendix 新 Revision 已保存。") |> load_workspace()}
+  end
 
   def handle_event("import-source", _params, socket) do
     results =
@@ -246,6 +306,92 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     {:noreply, result_flash(socket, result, "ReferenceSet 草稿已创建。") |> load_workspace()}
   end
 
+  def handle_event("generate-reference-candidates", _params, socket) do
+    visual = latest_revision(socket.assigns.revisions, :visual_design)
+
+    result =
+      with %Revision{} = visual <- visual,
+           {:ok, specs} <- materialize_reference_specs(socket.assigns.project, visual) do
+        Enum.reduce_while(specs, {:ok, []}, fn spec, {:ok, generated} ->
+          case Orchestrator.generate(spec, :reference_image, socket.assigns.project) do
+            {:ok, candidate} -> {:cont, {:ok, [candidate | generated]}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        end)
+      else
+        nil -> {:error, :confirmed_visual_design_required}
+        error -> error
+      end
+
+    {:noreply,
+     result_flash(socket, result, "参考图候选及 QC 已完成，等待逐槽位选择。")
+     |> load_workspace()}
+  end
+
+  def handle_event("create-reference-set-from-selections", _params, socket) do
+    visual = latest_revision(socket.assigns.revisions, :visual_design)
+
+    assignments =
+      Map.new(socket.assigns.reference_slots, fn slot ->
+        selection =
+          Enum.find(socket.assigns.selections, &(&1.slot_key == "reference:#{slot}"))
+
+        {slot, selection && selection.asset_version_id}
+      end)
+      |> Map.reject(fn {_slot, asset_id} -> is_nil(asset_id) end)
+
+    result =
+      if visual do
+        Visuals.create_reference_set_draft(socket.assigns.project, visual, assignments)
+      else
+        {:error, :confirmed_visual_design_required}
+      end
+
+    {:noreply, result_flash(socket, result, "ReferenceSet 草稿已由明确选择创建。") |> load_workspace()}
+  end
+
+  def handle_event(
+        "edit-candidate",
+        %{
+          "asset-id" => asset_id,
+          "spec-id" => spec_id,
+          "slot-key" => slot_key,
+          "edit" => %{"instruction" => instruction}
+        },
+        socket
+      ) do
+    parent = Repo.get!(AssetVersion, asset_id)
+    parent_spec = Repo.get!(GenerationSpec, spec_id)
+
+    payload =
+      parent_spec.payload
+      |> Map.put("prompt", String.trim(instruction))
+      |> Map.put("parent_asset_id", parent.id)
+      |> Map.put("reference_asset_ids", [parent.id])
+      |> Map.put("slot_key", slot_key)
+
+    result =
+      with false <- String.trim(instruction) == "",
+           {:ok, spec} <-
+             Generation.create_spec(socket.assigns.project, %{
+               revision_id: parent_spec.revision_id,
+               kind: "image_edit",
+               formal: parent_spec.formal,
+               payload: payload
+             }),
+           {:ok, generated} <-
+             Orchestrator.generate(spec, :image_edit, socket.assigns.project,
+               reference_assets: [parent]
+             ) do
+        {:ok, generated}
+      else
+        true -> {:error, :edit_instruction_required}
+        error -> error
+      end
+
+    {:noreply, result_flash(socket, result, "图像编辑已创建不可变子版本。") |> load_workspace()}
+  end
+
   def handle_event("compile-shot-specs", _params, socket) do
     inputs = %{
       narrative: latest_revision(socket.assigns.revisions, :narrative),
@@ -393,9 +539,74 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     {:noreply, result_flash(socket, result, "镜头顺序已更新。") |> load_workspace()}
   end
 
+  def handle_event("update-clip", %{"id" => id, "clip" => attrs}, socket) do
+    clip = Repo.get!(Clip, id)
+
+    result =
+      with {:ok, duration} <- parse_positive_integer(attrs["duration_ms"]),
+           {:ok, transition_duration} <-
+             parse_non_negative_integer(attrs["transition_duration_ms"]),
+           {:ok, motion} <- parse_motion(attrs["motion"]),
+           {:ok, transition} <- parse_transition(attrs["transition_after"]) do
+        TimelineContext.update_clip(clip, %{
+          duration_ms: duration,
+          motion: motion,
+          transition_after: transition,
+          transition_duration_ms: transition_duration
+        })
+      end
+
+    {:noreply, result_flash(socket, result, "镜头时长、运动与转场已保存。") |> load_workspace()}
+  end
+
+  def handle_event("add-placeholder-clip", _params, socket) do
+    result =
+      with %TimelineRecord{} = timeline <- socket.assigns.timeline do
+        next = length(socket.assigns.clips) + 1
+
+        TimelineContext.add_clip(timeline, %{
+          shot_id: "ADDED-#{String.pad_leading(Integer.to_string(next), 3, "0")}",
+          position: next,
+          duration_ms: 1_000,
+          motion: :static
+        })
+      else
+        nil -> {:error, :timeline_required}
+      end
+
+    {:noreply, result_flash(socket, result, "已添加可编辑占位镜头。") |> load_workspace()}
+  end
+
+  def handle_event("remove-clip", %{"id" => id}, socket) do
+    result = TimelineContext.remove_clip(socket.assigns.timeline, Repo.get!(Clip, id))
+    {:noreply, result_flash(socket, result, "镜头已从时间线草稿移除。") |> load_workspace()}
+  end
+
+  def handle_event(
+        "replace-clip",
+        %{"id" => id, "replacement" => %{"selection_id" => selection_id}},
+        socket
+      ) do
+    result =
+      TimelineContext.replace_clip(
+        Repo.get!(Clip, id),
+        Repo.get!(SelectionDecision, selection_id)
+      )
+
+    {:noreply, result_flash(socket, result, "镜头已替换为明确选择的资产。") |> load_workspace()}
+  end
+
   def handle_event(
         "update-subtitle",
-        %{"id" => id, "cue" => %{"text" => text, "start_ms" => start_ms, "end_ms" => end_ms}},
+        %{
+          "id" => id,
+          "cue" => %{
+            "text" => text,
+            "start_ms" => start_ms,
+            "end_ms" => end_ms,
+            "position" => position
+          }
+        },
         socket
       ) do
     cue = Repo.get!(SubtitleCue, id)
@@ -405,7 +616,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
         text: text,
         start_ms: String.to_integer(start_ms),
         end_ms: String.to_integer(end_ms),
-        style: cue.style
+        style: Map.put(cue.style, "position", position)
       })
 
     {:noreply, result_flash(socket, result, "字幕已保存，不会改写 Narrative。") |> load_workspace()}
@@ -448,6 +659,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
             <.link navigate={~p"/"} class="back-link">← 全部项目</.link>
             <p class="eyebrow">CURRENT PROJECT</p>
             <h1>{@project.name}</h1>
+            <form id="rename-project-form" phx-submit="rename-project" class="inline-setting-form">
+              <label>
+                <span class="sr-only">项目名称</span>
+                <input type="text" name="project[name]" value={@project.name} required />
+              </label>
+              <button type="submit" class="btn btn-ghost">改名</button>
+            </form>
           </div>
           <div class="project-header__status">
             <span>当前阶段</span>
@@ -602,6 +820,19 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               </form>
             </div>
             <.draft_editor :for={draft <- drafts_for(@drafts, :visual_design)} draft={draft} />
+            <div :if={@reference_slots != []} class="panel-actions production-actions">
+              <button type="button" class="btn btn-primary" phx-click="generate-reference-candidates">
+                AI 生成参考候选
+              </button>
+              <button
+                type="button"
+                class="btn btn-soft"
+                phx-click="create-reference-set-from-selections"
+              >
+                从已选主图创建 ReferenceSet
+              </button>
+            </div>
+            <CandidateGallery.candidate_gallery candidates={@reference_candidates} />
             <.form
               :if={@reference_slots != []}
               for={to_form(%{}, as: :reference)}
@@ -652,7 +883,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                 生成候选并执行 QC
               </button>
             </div>
-            <CandidateGallery.candidate_gallery candidates={@candidates} />
+            <CandidateGallery.candidate_gallery candidates={@shot_candidates} />
             <div :for={stale <- @stale_records} class="stale-row">
               <div>
                 <strong>选择输入已过期</strong>
@@ -675,10 +906,73 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               clips={@clips}
               subtitles={@subtitles}
               renders={@renders}
+              selections={@selections}
             />
           </section>
 
           <section :if={@stage == :runs} class="workspace-panel">
+            <section class="settings-grid" aria-labelledby="project-settings-title">
+              <div class="section-heading compact">
+                <div>
+                  <p class="eyebrow">PROJECT SETTINGS</p>
+                  <h2 id="project-settings-title">项目配置覆盖</h2>
+                </div>
+              </div>
+
+              <form
+                id="production-profile-form"
+                phx-submit="update-production-profile"
+                class="structured-form"
+              >
+                <h3>ProductionProfile</h3>
+                <div class="settings-fields">
+                  <label :for={field <- production_profile_fields()}>
+                    <span>{field}</span>
+                    <input type="number" min="1" name={"profile[#{field}]"} value={@profile[field]} />
+                  </label>
+                </div>
+                <button type="submit" class="btn btn-soft">保存项目规格</button>
+              </form>
+
+              <form id="model-override-form" phx-submit="put-model-override" class="structured-form">
+                <h3>模型项目覆盖</h3>
+                <label>
+                  <span>任务类型</span>
+                  <select name="model_override[task_type]">
+                    <option :for={task <- model_task_types()} value={task}>{task}</option>
+                  </select>
+                </label>
+                <label>
+                  <span>模型（留空继承系统值）</span>
+                  <input type="text" name="model_override[model]" placeholder="gpt-5.6-terra" />
+                </label>
+                <label>
+                  <span>参数 JSON</span>
+                  <textarea name="model_override[params]" rows="5">{"{}"}</textarea>
+                </label>
+                <button type="submit" class="btn btn-soft">保存模型覆盖</button>
+              </form>
+
+              <form
+                id="prompt-appendix-form"
+                phx-submit="create-prompt-appendix"
+                class="structured-form"
+              >
+                <h3>用户可编辑 PromptAppendix</h3>
+                <p>核心 Prompt 由系统隐藏并版本化；这里只追加当前任务的项目规则。</p>
+                <label>
+                  <span>任务类型</span>
+                  <select name="prompt_appendix[task_type]">
+                    <option :for={task <- prompt_task_types()} value={task}>{task}</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Appendix 内容</span>
+                  <textarea name="prompt_appendix[body]" rows="6" required></textarea>
+                </label>
+                <button type="submit" class="btn btn-soft">保存新 Appendix Revision</button>
+              </form>
+            </section>
             <div
               :if={Application.fetch_env!(:dramatizer, :provider_mode) == :fake}
               class="fake-controls"
@@ -909,6 +1203,11 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       )
 
     candidates = build_candidates(assets, specs, reports, selections, attempts, costs)
+
+    reference_candidates =
+      Enum.filter(candidates, &String.starts_with?(&1.slot_key, "reference:"))
+
+    shot_candidates = Enum.filter(candidates, &String.starts_with?(&1.slot_key, "shot:"))
     episode_candidates = episode_candidates(snapshots)
     reference_slots = reference_slots(revisions)
     reference_assets = Enum.filter(assets, &String.starts_with?(&1.mime_type, "image/"))
@@ -934,6 +1233,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
     socket
     |> assign(:stage, stage)
+    |> assign(:profile, Projects.effective_profile(socket.assigns.project))
     |> assign(:state, Map.fetch!(stage_states, stage))
     |> assign(:stage_states, stage_states)
     |> assign(:source_revisions, source_revisions)
@@ -948,6 +1248,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     |> assign(:selections, selections)
     |> assign(:stale_records, stale_records)
     |> assign(:candidates, candidates)
+    |> assign(:reference_candidates, reference_candidates)
+    |> assign(:shot_candidates, shot_candidates)
     |> assign(:reference_slots, reference_slots)
     |> assign(:reference_assets, reference_assets)
     |> assign(:timeline, timeline)
@@ -982,6 +1284,50 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     end)
 
     :ok
+  end
+
+  defp materialize_reference_specs(project, visual) do
+    config = ConfigResolver.resolve(:reference_image, project)
+    count = config.params["candidate_count"] || 4
+    {width, height} = parse_image_size(config.params["size"] || "768x1360")
+
+    specs =
+      for object <- visual.payload["objects"] || [],
+          object["reference_required"],
+          variant <- object["variants"] || [],
+          slot <- variant["required_slots"] || [],
+          index <- 0..(count - 1) do
+        reference_slot = "#{object["id"]}/#{variant["id"]}/#{slot}"
+
+        payload = %{
+          "object_id" => object["id"],
+          "reference_slot" => reference_slot,
+          "slot_key" => "reference:#{reference_slot}",
+          "object" => object,
+          "variant" => variant,
+          "slot" => slot,
+          "prompt" => "为#{object["name"] || object["id"]}生成#{slot}参考图",
+          "width" => width,
+          "height" => height,
+          "aspect_width" => visual.profile_snapshot["aspect_width"] || 9,
+          "aspect_height" => visual.profile_snapshot["aspect_height"] || 16,
+          "aspect_tolerance" => 0.01,
+          "dependencies" => %{"visual_design_revision_id" => visual.id}
+        }
+
+        {:ok, spec} =
+          Generation.create_spec(project, %{
+            revision_id: visual.id,
+            kind: "reference_image",
+            candidate_index: index,
+            formal: true,
+            payload: payload
+          })
+
+        spec
+      end
+
+    {:ok, specs}
   end
 
   defp fake_fault_spec(project) do
@@ -1063,12 +1409,16 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           spec_attempts = Enum.filter(attempts, &(&1.spec_id == spec.id))
           attempt_ids = MapSet.new(spec_attempts, & &1.id)
 
-          cost_micros =
-            costs
-            |> Enum.filter(
+          actual_costs =
+            Enum.filter(
+              costs,
               &(&1.entry_type == :actual and MapSet.member?(attempt_ids, &1.attempt_id))
             )
-            |> Enum.reduce(0, &((&1.amount_micros || 0) + &2))
+
+          cost_micros =
+            if actual_costs != [] and Enum.all?(actual_costs, &is_integer(&1.amount_micros)) do
+              Enum.reduce(actual_costs, 0, &(&1.amount_micros + &2))
+            end
 
           reference_ids =
             spec.payload["reference_asset_ids"] ||
@@ -1086,7 +1436,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               spec_id: spec.id,
               spec_kind: spec.kind,
               index: spec.candidate_index,
-              slot_key: "shot:#{shot_id}",
+              slot_key: candidate_slot_key(spec, shot_id),
               summary: candidate_summary(spec.payload),
               technical: technical && technical.status,
               semantic: semantic && semantic.status,
@@ -1094,6 +1444,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               reference_urls: reference_urls,
               attempts: spec_attempts,
               cost_micros: cost_micros,
+              formal: spec.formal,
               selected: MapSet.member?(selected_ids, asset.id)
             }
           ]
@@ -1105,6 +1456,23 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp candidate_summary(payload) do
     value = payload["positive_prompt"] || payload["prompt"] || payload["shot_id"] || "结构化生成规格"
     value |> to_string() |> String.slice(0, 140)
+  end
+
+  defp candidate_slot_key(spec, shot_id) do
+    spec.payload["slot_key"] ||
+      if(spec.kind == "reference_image",
+        do: "reference:#{spec.payload["reference_slot"] || shot_id}",
+        else: "shot:#{shot_id}"
+      )
+  end
+
+  defp parse_image_size(value) do
+    case String.split(to_string(value), "x", parts: 2) do
+      [width, height] -> {String.to_integer(width), String.to_integer(height)}
+      _ -> {768, 1360}
+    end
+  rescue
+    ArgumentError -> {768, 1360}
   end
 
   defp episode_candidates([snapshot | _]) do
@@ -1309,6 +1677,70 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
   defp upload_unready?([]), do: true
   defp upload_unready?(entries), do: Enum.any?(entries, &(&1.progress < 100))
+
+  defp parse_positive_integer(value) do
+    case Integer.parse(to_string(value)) do
+      {number, ""} when number > 0 -> {:ok, number}
+      _ -> {:error, :positive_integer_required}
+    end
+  end
+
+  defp parse_non_negative_integer(value) do
+    case Integer.parse(to_string(value)) do
+      {number, ""} when number >= 0 -> {:ok, number}
+      _ -> {:error, :non_negative_integer_required}
+    end
+  end
+
+  defp parse_motion(value) do
+    case value do
+      "static" -> {:ok, :static}
+      "push_in" -> {:ok, :push_in}
+      "pull_out" -> {:ok, :pull_out}
+      "pan_left" -> {:ok, :pan_left}
+      "pan_right" -> {:ok, :pan_right}
+      "pan_up" -> {:ok, :pan_up}
+      "pan_down" -> {:ok, :pan_down}
+      _ -> {:error, :invalid_motion}
+    end
+  end
+
+  defp parse_transition("hard_cut"), do: {:ok, :hard_cut}
+  defp parse_transition("cross_dissolve"), do: {:ok, :cross_dissolve}
+  defp parse_transition(_value), do: {:error, :invalid_transition}
+
+  defp production_profile_fields do
+    ~w(aspect_width aspect_height duration_min_seconds duration_max_seconds shot_min shot_max preview_width preview_height formal_width formal_height)a
+  end
+
+  defp model_task_types do
+    :dramatizer
+    |> Application.fetch_env!(:model_defaults)
+    |> Map.keys()
+    |> Enum.sort()
+    |> Enum.map(&Atom.to_string/1)
+  end
+
+  defp prompt_task_types, do: Catalog.task_types() |> Enum.map(&Atom.to_string/1)
+
+  defp model_task_type(value) do
+    Enum.find_value(model_task_types(), {:error, :unknown_model_task_type}, fn task ->
+      if task == value, do: {:ok, String.to_existing_atom(task)}
+    end)
+  end
+
+  defp prompt_task_type(value) do
+    Enum.find_value(prompt_task_types(), {:error, :unknown_prompt_task_type}, fn task ->
+      if task == value, do: {:ok, String.to_existing_atom(task)}
+    end)
+  end
+
+  defp blank_to_nil(value) when is_binary(value) do
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
 
   defp node_state(status) when status in [:queued, :running], do: :loading
   defp node_state(:failed), do: :failed
