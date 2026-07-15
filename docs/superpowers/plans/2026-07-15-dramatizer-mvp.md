@@ -160,13 +160,13 @@ NodeRun: blocked -> queued -> running -> succeeded|failed|cancelled|superseded
 Attempt: prepared -> submitted -> succeeded|failed|timed_out|unknown_remote_state
 ```
 
-- [ ] Write failing tests for allowed transitions, no terminal-state regression, required-parent blocking, retry appending an Attempt, stable idempotency under duplicate submission/callback, inbox deduplication, outbox insertion in the same transaction, and crash/restart recovery from record IDs.
-- [ ] Implement workflow tables and explicit transition functions using optimistic lock/version checks; Oban args carry only `node_run_id`.
-- [ ] Implement `generation_specs`, request snapshots, and attempts; redact `authorization`, `api_key`, `token`, and configured secret patterns before persistence/logging.
-- [ ] Implement estimate/reservation/actual cost entries; unknown actual cost remains `nil`; optional project budget reservation happens transactionally before submission.
-- [ ] Verify concurrency behavior with `Task.async_stream` duplicate calls and SQL unique constraints.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer/workflow_test.exs test/dramatizer/generation_test.exs test/dramatizer/costs_test.exs; Pop-Location`.
-- [ ] Commit: `feat: add recoverable workflow and provider attempts`.
+- [x] Write failing tests for allowed transitions, no terminal-state regression, required-parent blocking, retry appending an Attempt, stable idempotency under duplicate submission/callback, inbox deduplication, outbox insertion in the same transaction, and crash/restart recovery from record IDs.
+- [x] Implement workflow tables and explicit transition functions using optimistic lock/version checks; Oban args carry only `node_run_id`.
+- [x] Implement `generation_specs`, request snapshots, and attempts; redact `authorization`, `api_key`, `token`, and configured secret patterns before persistence/logging.
+- [x] Implement estimate/reservation/actual cost entries; unknown actual cost remains `nil`; optional project budget reservation happens transactionally before submission.
+- [x] Verify concurrency behavior with `Task.async_stream` duplicate calls and SQL unique constraints.
+- [x] Verify: `Push-Location app; mix test test/dramatizer/workflow_test.exs test/dramatizer/generation_test.exs test/dramatizer/costs_test.exs; Pop-Location`.
+- [x] Commit: `feat: add recoverable workflow and provider attempts`.
 
 ### Task 5: Complete the Fake three-shot vertical slice through selection
 
