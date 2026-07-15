@@ -4,81 +4,116 @@
 
 **当前分支：** `feat/dramatizer-mvp`（隔离 worktree：`.worktrees/dramatizer-mvp`）
 
-**工作阶段：** Task 1–16 已完成；Fake 浏览器闭环与真实 OpenAI 文本/图像/QC/正式导出门禁均已通过，进入 Task 17 最终追踪、复核、发布与常驻启动
+**工作阶段：** Task 1–17 功能实现和全部 fresh gate 已完成；等待最终文档提交、推送与常驻进程启动
 
 ## 当前事实
 
-- `docs/ai_short_drama_framework_v0.2/` 是已经冻结并通过跨模型审计的原始实施基线。
-- 当前方向已变为本机、单用户、无认证/权限/权利安全子系统的功能优先版本。
-- 已确认的增量决策记录在 [`docs/implementation-alignment.md`](docs/implementation-alignment.md)。
-- 对齐记录目前包含 `D-001` 至 `D-059`；最新确认批次是静态 Animatic 时间线、字幕、静音占位与双路径导出。
-- 完整产品需求与实施设计已整理并确认为实施基线：[`docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md`](docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md)。
-- 逐文件、逐测试的执行清单位于 [`docs/superpowers/plans/2026-07-15-dramatizer-mvp.md`](docs/superpowers/plans/2026-07-15-dramatizer-mvp.md)。
-- Phoenix/LiveView 应用、PostgreSQL/Oban、本地 AssetStore、全文 parser、分析 DAG、Revision/ChangeSet、Fake/OpenAI Provider 合同、图像 QC、时间线、字幕、FFmpeg 导出和备份恢复已按 Task 1–14 提交。
-- Task 15 新增 AT-001–AT-004、AT-006–AT-010 命名验收测试和 Playwright Chromium 全流程；真实浏览器上传采用自动上传、进度可见和空提交保护。
-- Task 16 已把网页共用生成执行器从固定 Fake 改为按 `provider_mode` 分派 Fake/OpenAI；真实分支使用同一份 GenerationSpec/RequestSnapshot/Attempt/Asset/QC/Selection 谱系，并把已确认 ReferenceSet 作为 `gpt-image-2` 编辑输入。
-- 全文分析现在实际组合隐藏 CorePrompt 与可选 PromptAppendix，冻结配置/提示词/Schema 哈希，后继节点接收精确上游结果；结构化 Provider 的任务扩展数据通过严格 JSON 字符串合同进入，再在领域校验后解码为内部 Map。
+- 产品是本机、单用户、多 Project、无登录/认证/RBAC/权利安全子系统的功能优先制作台。
+- 冻结需求是 [`docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md`](docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md)，逐文件计划是 [`docs/superpowers/plans/2026-07-15-dramatizer-mvp.md`](docs/superpowers/plans/2026-07-15-dramatizer-mvp.md)，历史对齐决策是 [`docs/implementation-alignment.md`](docs/implementation-alignment.md)。
+- Phoenix/LiveView、PostgreSQL/Oban、本地内容寻址 AssetStore、全文 Parser、分析 DAG、Draft/Revision、视觉权威、Fake/OpenAI Provider、两层 QC、ChangeSet/stale、Timeline/字幕、FFmpeg 和本地备份恢复均已进入同一持久化闭环。
+- TXT、Markdown 和带文本层 PDF 按全文导入；不做自动分段。AI 结构化结果先成为 Draft/Proposal，只有明确确认才形成不可变 Revision。
+- 真实路径由 `gpt-5.6-terra` 完成结构化文本、图像提示词补全和多模态语义 QC，`gpt-image-2` 完成图像生成/编辑。AI 补全的 Provider prompt 不能覆盖已确认的中文角色、场景、镜头权威数据。
+- 模型配置按系统默认 → Project 覆盖 → Task 一次性覆盖解析；ProductionProfile 允许 Project 默认与单集冻结覆盖。CorePrompt 隐藏且不可编辑，PromptAppendix 按任务类型追加修订。
+- Fake 与 OpenAI 共用 GenerationSpec、ProviderRequestSnapshot、Attempt、CostEntry、AssetVersion、QC、SelectionDecision 和 TimelineVersion；真实流程不是旁路演示。
 
-## 最新验证证据
+## 2026-07-15 fresh gate
 
-- `mix.bat format --check-formatted` 与 `mix.bat compile --warnings-as-errors`：通过。
-- `./scripts/test.ps1`：85 passed（105.3s），包含单元、集成、命名验收、LiveView 和真实 FFmpeg 正式导出。
-- `mix.bat test test/dramatizer/acceptance test/dramatizer_web/live/project_workspace_live_test.exs`：14 passed，作为 Task 15 focused gate。
-- `mix.bat test test/dramatizer/acceptance`：7 passed，覆盖离线 AT 与 TimelineClip → SourceRevision 全血缘。
-- `./scripts/e2e.ps1`：1 passed（50.8s）；完成三 Shot Fake 制作闭环、人工确认、候选选择、字幕编辑、预览/正式导出、全部阶段路由、素材 HTTP、失败恢复和重复/乱序回调去重。
-- v0.2 合同校验：8 schemas、7 mapped examples、33 negative cases 与全部本地 Markdown 链接通过；`git diff --check` 通过。
-- E2E 正式视频经 FFprobe 验证为 1080×1920、H.264、yuv420p，并包含 AAC 双声道静音轨；MP4/SRT 均通过应用路由下载。
-- Task 14 已实际执行备份与恢复到全新数据库/素材根，并在恢复后通过 manifest 一致性检查。
-- `./scripts/real-smoke.ps1 -Force` 的真实闭环测试本体通过（545.4s，2 passed）：6 个全文分析节点、3 张必需参考图、6 张 Shot 候选、9 份技术 QC、9 份 Terra 多模态语义 QC、3 个最终 Clip 和正式 Animatic 全部完成。
-- 真实门禁持久化 25 个 ProviderRequestSnapshot 和 25 个 Provider request ID；其中 24 个 Attempt 首次成功，`episode_candidates` 的 1 个输出因跨节点悬空引用进入结构化修复，下一 Attempt 成功。没有重复图像资产或重复选择。
-- Provider 原始 usage 已逐 Attempt 保存：合计 96,029 total tokens（74,338 input、21,691 output），其中 Images usage 明确包含 18,576 input image tokens 与 990 output image tokens。API 响应没有返回货币成本，因此 actual cost 记为不可用，不解释为零。
-- 正式真实输出再次经 FFprobe 验证为 1080×1920、H.264、yuv420p、AAC 双声道静音轨；真实生成素材、数据库与日志均位于 Git 忽略的 `var/`、`output/` 和独立数据库中。
+- `mix.bat format --check-formatted`、`mix.bat compile --warnings-as-errors`、`mix.bat assets.build`：全部通过。
+- `./scripts/test.ps1`：**99 passed，1 excluded，251.5s**；排除项仅为必须显式启用的真实 Provider 标签。
+- `./scripts/e2e.ps1`：Chromium **1 passed，48.7s**；完成 Project 创建、小说上传、Fake 分析/制作、人工确认、选择、字幕/Timeline 编辑、预览、正式导出、失败恢复、全阶段路由和 MP4/SRT 下载。
+- `./scripts/real-smoke.ps1 -Force`：真实 Provider **2 passed，703.9s**；6 个分析节点、3 张参考图、6 张镜头候选、9 份技术 QC、9 份 Terra 语义 QC、3 个最终 Clip 全部完成。
+- 真实门禁持久化 **33** 个 ProviderRequestSnapshot 和 **33** 个 Provider request ID；usage 为 **116,998 total tokens**（85,734 input、31,264 output，含 18,576 input image tokens 与 990 output image tokens）。API 未返回币种费用，33 条 actual 记录的金额明确为 `unavailable`，不是零。
+- 真实正式输出经 FFprobe 验证为 **1080×1920、H.264、yuv420p、AAC 双声道静音轨**；完整最终 Clip 可回溯到 Asset/QC/Attempt/RequestSnapshot/GenerationSpec/ShotPlan/Visual/Narrative/Source。
+- 首次 fresh 真实运行遇到两次脱敏的传输层 `closed`，系统保留失败 Attempt 并执行一次节点恢复；没有把瞬态错误当成功。官方状态正常后，全新强制运行完整通过。
+- v0.2 合同校验：**8 schemas、7 mapped examples、33 negative cases** 与全部本地 Markdown 链接通过。
+- Python 媒体 Worker：`compileall`、`unknown_command`、`unsupported_protocol` 探针通过；Elixir Worker 超时测试证明调用方不会永久阻塞。
+- 本地运维演练：`dramatizer_dev` 完整备份到独立目录，再恢复至 `dramatizer_restore_gate` 与独立 AssetStore；恢复后一致性检查通过，write checkpoint 已释放。
+- `.env` 经 Git 忽略；已对全部 tracked 文件执行当前 OpenAI Key 精确值扫描和 OpenAI/Gemini/私钥常见模式扫描，命中均为 0；`git diff --check` 通过。
 
-## 已对齐的关键方向
+## 集中代码复核
 
-- Localhost Web 应用；Phoenix + Ecto + Oban + LiveView；PostgreSQL + 本地文件系统 AssetStore。
-- 多 Project，但无用户、认证、RBAC/ABAC 或租户安全边界。
-- 删除 RightsGate、waiver、许可和安全子系统；保留 Revision、状态机、幂等、资产 finalize、成本、QC 和人工选择。
-- 首个闭环为 1 集、1 场、3 Shot 的 Fake Provider 可恢复流水线；Fake 与真实 Provider 共用执行路径。
-- 首批真实能力为 OpenAI 文本与图像：`gpt-5.6-terra` 默认文本分析、`gpt-5.6-sol` 可用于高要求任务覆盖、`gpt-image-2` 生成图像。
-- 小说入口支持 UTF-8 TXT、Markdown 和文本 PDF；首版采用整本输入、多任务调用和显式分析 DAG。
-- AI 输出先进入 Draft/Proposal；用户确认后才形成不可变 Revision。
-- CorePrompt 对用户隐藏且不可修改；PromptAppendix 按任务类型允许用户编辑。
-- 正式图像生产采用“文本设定 Revision → VisualDesignRevision → ReferenceSetRevision → ShotKeyframe”四层链路。
-- 常驻角色及跨镜头/剧情关键的场景、道具必须先确认参考图；一次性普通对象允许只用文本。
-- 用户上传图与 AI 生成图共用 AssetVersion 路径；参考资产默认 4 个候选，逐镜分镜默认 2 个候选。
-- 首版支持提示词图像编辑，遮罩编辑保留合同但推迟 UI；编辑与重生成永不覆盖原资产。
-- 静态图像候选默认执行确定性技术 QC 和一次 GPT-5.6 Terra 多模态语义 QC；首版不引入专用 CV 模型。
-- 只有损坏、不可解码或违反硬媒体规格的确定性失败阻断选择；语义 QC 只提供证据和建议，用户保留最终选择权。
-- ShotKeyframe 语义 QC 对照精确 GenerationSpec、ReferenceSet 和存在时的相邻已选镜头；不会把整集图片全部塞进每次检查。
-- QC 不自动触发付费重生成；用户可重生成、提示词编辑、接受结果或返回上游确认新 Revision。
-- 上游新 Revision 先形成影响预览 ChangeSet；用户选择升级范围后自动增量重编译，但不自动发起付费图片生成。
-- stale 主图保持原选择；用户可继续固定旧输入或升级重生成。工作预览允许带 stale 继续，正式导出前必须逐项解决。
-- 改选 Shot 主图只自动重跑该 Shot 与直接邻居的语义 QC；不会重跑整集或自动重生成图片。
-- ChangeSet 按节点保留部分成功并可恢复；未外发旧任务会取消，已外发任务继续对账且结果按旧输入标记 stale。
-- 首条 Timeline Draft 按 ShotPlan 自动组装并允许重排；Clip 默认使用 preferred duration，但越界只警告、不反向修改导演 Revision。
-- 静态关键帧支持有限运动预设；镜头默认硬切并可选简单叠化；对白生成独立句级字幕轨。
-- 文本与图像阶段不接真实音频 Provider，正式 Animatic 使用显式 AAC 静音占位轨。
-- Timeline Draft 可生成低清预览；冻结 TimelineVersion 后生成正式 H.264/AAC MP4 并执行独立导出 QC。
+| 风险类 | 复核结论与直接证据 |
+|---|---|
+| 数据不变量 | `ModelOverride` 拒绝非正整数候选数；LiveView 物化层再次防御；探索 GenerationSpec 不能进入正式 Timeline；`ProjectsTest`、`OrchestratorInvariantsTest`、`TimelineTest` 直接覆盖。 |
+| 跨 Context 写入 | Web 层只调用 Projects/Sources/Revisions/Generation/Quality/Timeline 等命令 API；关键多表操作使用 Ecto.Multi/事务；全量测试与 LiveView 闭环通过。 |
+| 终态回退 | Workflow、Attempt、Revision、TimelineVersion 的允许转换和不可变触发器均有直接失败断言；`WorkflowTest`、`GenerationTest`、`RevisionsTest`、`TimelineTest` 通过。 |
+| 重复外部副作用 | Prompt 提案按权威输入复用成功 Attempt；Inbox/Outbox 幂等；Semantic QC 重复提交复用完成报告；重复/乱序回调只产生一个资产和一条 actual；Fake AT-002 与 E2E 故障恢复通过。 |
+| 错误与密钥脱敏 | Provider 快照只保存 `credential_ref`，不保存 Key/Authorization；错误元数据只保留稳定类别、request id 与公开 Provider 字段；真实日志和 tracked 文件精确 Key 扫描均为 0。 |
+| 子进程清理 | Python/FFmpeg 调用有有界 timeout；超时用 `Task.shutdown(..., :brutal_kill)` 终止调用进程，正常/错误返回路径清理渲染临时目录；Worker 超时回归、全量 FFmpeg 和 E2E 渲染通过。 |
+| 正式选择边界 | Timeline 替换只接受 `shot:` SelectionDecision，参考图不会出现在替换下拉或进入镜头；新增回归先失败后通过。 |
+| 成本事实 | 所有真实提交先 estimate/reserve，再 settle；Provider 未返回货币金额时保存 `actual amount_micros=nil` 并在网页/脚本显示“未返回/unavailable”，不伪造 `$0`。 |
 
-## 续接步骤
+## PRD 逐条追踪
 
-```powershell
-git pull origin main
-pwsh -NoProfile -File .\docs\ai_short_drama_framework_v0.2\tools\validate_contracts.ps1
-```
+下表每行同时给出已检查的实现入口和直接执行过的测试/验收证据；“完成”不是仅由相邻需求推断。
 
-然后先读：
+| ID | 状态 | 实现证据 | 直接测试/验收证据 |
+|---|---|---|---|
+| FR-001 | 完成 | `Projects`、ProjectIndexLive 的创建/打开/重命名/归档 | `ProjectsTest`、`ProjectIndexLiveTest` |
+| FR-002 | 完成 | `ProductionProfile`、Project 更新与单集 snapshot override | `ProjectsTest`、`RevisionsTest`、设置 LiveView 测试 |
+| FR-003 | 完成 | `ConfigResolver` 实现 system → project → task；Project 设置页可编辑 | `ConfigResolverTest`、`ProjectsTest`、设置 LiveView 测试 |
+| FR-004 | 完成 | `Prompts.Catalog/Composer` 分离隐藏 CorePrompt 与追加式 PromptAppendix | `ComposerTest`、`ImagePromptProposalTest`、设置 LiveView 不泄露 CorePrompt 断言 |
+| FR-005 | 完成 | 中文权威输入保存在 Revision/Spec；`ImagePromptCompiler` 只编译 Provider prompt | `CompilerTest`、`ImagePromptProposalTest`、真实中文烟测 |
+| FR-010 | 完成 | `Sources.Parser` 支持 UTF-8 TXT/MD/Markdown/文本 PDF | `ParserTest`、`SourcesTest`、AT-003 |
+| FR-011 | 完成 | `SourceDocument/SourceRevision` 追加修订、hash、页码/offset locator | `SourcesTest`、`SourceAnalysisTest` |
+| FR-012 | 完成 | 整本预检、文本层检查、`document_too_large` 稳定错误 | `ParserTest`、`SourceAnalysisTest` |
+| FR-020 | 完成 | 3 个独立根及 required descendants 的持久化分析 DAG/Runner | `Analysis.DAGTest`、AT-003、真实 6 节点烟测 |
+| FR-021 | 完成 | 严格 JSON Schema、领域 Validator、最多两次结构化修复 | `ValidatorTest`、`DAGTest`、AT-004 |
+| FR-022 | 完成 | 输出强制 provenance 与零基 Unicode offset locator | `ValidatorTest`、`SourceAnalysisTest` |
+| FR-030 | 完成 | `Narrative.materialize_episode` 从明确候选创建 Draft | `NarrativeTest`、Fake AT-001、LiveView 选择测试 |
+| FR-031 | 完成 | Draft 可编辑；确认生成不可变 Revision 与输入/profile snapshot | `RevisionsTest`、LiveView 人工门测试 |
+| FR-032 | 完成 | ShotPlan 确认后由 `Directing.Compiler` 确定性生成冻结 Spec | `CompilerTest`、Fake AT-001、真实 AT-005 |
+| FR-040 | 完成 | Narrative → VisualDesign → ReferenceSet → ShotKeyframe 四层引用链 | `VisualsTest`、`CompilerTest`、AT-005/AT-006 |
+| FR-041 | 完成 | 关键/常驻对象自动要求 overall、face/detail 等必需槽位 | `VisualsTest`、`ReferenceWorkflowTest`、真实 3 参考图断言 |
+| FR-042 | 完成 | ReferenceWorkflow/Visuals 生成逐槽位候选并由明确选择冻结 ReferenceSet | `ReferenceWorkflowTest`、参考图 LiveView 测试、AT-005 |
+| FR-043 | 完成 | 上传图与 AI 图统一 finalize 为内容寻址 AssetVersion | `AssetsTest`、`AssetsChangesTest`、AT-006 |
+| FR-050 | 完成 | Fake/OpenAI 共用 Orchestrator；OpenAI Responses 与 Images adapters | adapter 单测、`OrchestratorInvariantsTest`、真实 AT-005 |
+| FR-051 | 完成 | 系统默认参考图 4、镜头 2；Project/Task 可覆盖且必须为正整数 | `ReferenceWorkflowTest`、`ConfigResolverTest`、`ProjectsTest` |
+| FR-052 | 完成 | GenerationSpec 区分 exploratory/formal；正式 Timeline 拒绝探索资产 | `OrchestratorInvariantsTest`、`TimelineTest` |
+| FR-053 | 完成 | 图像编辑创建带 parent/reference/mask lineage 的新资产版本，不覆盖原图 | `OpenAIImagesTest`、参考图 LiveView 不可变编辑测试、AT-006 |
+| FR-060 | 完成 | `TechnicalQC` 确定性探测 + `SemanticQC` Terra 多模态评价 | 两类 QC 单测、Fake AT-001、真实 AT-005 |
+| FR-061 | 完成 | 语义报告按 Spec、ReferenceSet、相邻选择输出维度和证据 | `SemanticQCTest`、真实 9 份语义报告 |
+| FR-062 | 完成 | 仅损坏/不可解码/硬规格失败阻断；语义失败可由用户明确接受 | `TechnicalQCTest`、`SemanticQCTest`、选择测试 |
+| FR-063 | 完成 | Orchestrator 持久化 Attempt/QC/成本；候选卡显示证据且不默认选择 | `OrchestratorInvariantsTest`、CandidateGallery LiveView 测试、E2E |
+| FR-070 | 完成 | `Changes.preview/confirm` 冻结 diff、依赖图 epoch 和选择范围 | `ChangesTest`、AT-007 |
+| FR-071 | 完成 | stale 历史选择保留；可 pin old 或 replace；预览与正式门分离 | `ChangesTest`、`TimelineRestoreTest`、AT-009 |
+| FR-072 | 完成 | 改选只调度当前/前一/后一镜头的精确 Selection ID 语义 QC | `SemanticQCTest`、`ChangesTest` |
+| FR-073 | 完成 | 未提交旧工作取消；已提交 Attempt 按旧输入结算并标 stale | `ChangesTest`、AT-007 |
+| FR-074 | 完成 | ChangeSet/NodeRun 部分成功保留，resume 不重复成功节点或费用 | `ChangesTest`、`WorkflowTest`、AT-007 |
+| FR-080 | 完成 | Timeline 按 ShotPlan 组装，占位、重排、替换、增删均落库 | `TimelineTest`、Timeline LiveView 测试、E2E |
+| FR-081 | 完成 | preferred duration、越界 warning、static/push/pull/four pan 编辑 | `TimelineTest`、`RenderIntegrationTest` |
+| FR-082 | 完成 | hard cut 与有界 cross-dissolve，确定性 recipe | `TimelineTest`、`RenderRecipeTest` |
+| FR-083 | 完成 | 逐句 SubtitleCue 独立编辑并冻结来源/时间/样式；UTF-8 SRT | `TimelineTest`、`RenderRecipeTest`、E2E |
+| FR-084 | 完成 | 正式 Animatic 写入全时长 AAC 双声道静音占位轨 | `RenderIntegrationTest`、AT-008、真实 FFprobe |
+| FR-085 | 完成 | 低清 preview 与冻结后 1080×1920 formal 分离、缓存和独立 QC | `RenderRecipeTest`、`RenderIntegrationTest`、AT-008/AT-009 |
+| FR-090 | 完成 | estimate → reservation → actual 成本账；未知 actual 保持 nil | `CostsTest`、Provider/QC 回归、真实 33 条 actual |
+| FR-091 | 完成 | 仅保存 credential reference；运行时从 Git 忽略 `.env` 解析 Key | adapter 单测、backup manifest 测试、真实与仓库 secret scan |
+| FR-092 | 完成 | PostgreSQL 为事实源；Oban/Job 只携带记录 ID；可从记录恢复 | `WorkflowTest`、Fake 故障恢复、`BackupRestoreTest`、E2E |
+| AT-001 | 完成 | Fake 三镜头端到端生产闭环 | `Acceptance.FakeMVPTest`、Playwright E2E |
+| AT-002 | 完成 | 重复提交/乱序回调只落一份结果和费用 | `FakeMVPTest` AT-002、LiveView 故障控制、E2E |
+| AT-003 | 完成 | TXT/MD/文本 PDF 全文导入、DAG 阻塞/恢复、来源定位 | `SourceAnalysisTest`、Parser/Sources 测试 |
+| AT-004 | 完成 | 结构化非法输出追加修复 Attempt，成功或稳定失败 | `DAGTest`、`ValidatorTest` |
+| AT-005 | 完成 | OpenAI 文本、AI 提示词、图像、语义 QC 与正式视频真实闭环 | `RealProviderSmokeTest` 2 passed，33 requests/IDs |
+| AT-006 | 完成 | 上传资产和提示词图像编辑统一谱系且原版本不变 | `AssetsChangesTest`、OpenAI Images、LiveView 编辑测试 |
+| AT-007 | 完成 | 精确 ChangeSet 影响面、无隐藏付费生成、局部 resume | `AssetsChangesTest`、`ChangesTest` |
+| AT-008 | 完成 | Timeline/SRT/Preview/Formal 配方、编解码和下载 | `TimelineRestoreTest`、Render integration、E2E |
+| AT-009 | 完成 | unresolved stale 阻止 formal，pin old 后按精确旧闭包导出 | `TimelineRestoreTest`、`TimelineTest` |
+| AT-010 | 完成 | DB dump + AssetStore + manifest 恢复后一致且配方可重建 | `BackupRestoreTest` 与 2026-07-15 独立库实操演练 |
 
-1. 本文件；
-2. [`docs/implementation-alignment.md`](docs/implementation-alignment.md)；
-3. [`docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md`](docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md)；
-4. [`docs/ai_short_drama_framework_v0.2/docs/11_roadmap_and_acceptance.md`](docs/ai_short_drama_framework_v0.2/docs/11_roadmap_and_acceptance.md)。
+## 已知范围边界
 
-PRD 已确认。实现阶段不再发起细节问卷；严格按冻结计划执行。仅在 API Key、管理员权限、外部服务授权或产品范围冲突等必须由用户处理的硬阻塞处暂停。
+- 本版本不实现认证、权限、租户隔离、RightsGate、内容安全工作台、真实视频、配音、音乐或发布。
+- Suno 接口尚未接入；正式 Animatic 使用显式静音轨。后续 Provider 可沿现有 RequestSnapshot/Attempt/Cost/Asset/QC 合同加入，不需要推翻当前闭环。
+- 图像遮罩编辑的领域合同与 lineage 已保留，首版网页只开放提示词编辑。
+- Provider 不返回货币费用时，系统只能展示 usage 与“实际费用未返回”，不会猜测金额。
 
-## 下一步
+## 运行交接
 
-1. 执行 Task 17 的 FR-001–FR-092 / AT-001–AT-010 逐条追踪与集中代码复核。
-2. 运行全部 fresh gate；真实 Provider 已有同一实现版本的通过证据，普通 `real-smoke.ps1` 将复核该证据，只有显式 `-Force` 才重新计费生成。
-3. 提交并推送 `feat/dramatizer-mvp`，后台启动 `scripts/dev.ps1`，完成最终 HTTP/浏览器探测后把 `http://127.0.0.1:4000/` 留给用户验收。
+- URL、PID 和日志路径将在最终常驻启动后写入本节。
+- 根目录 `.env` 是本机配置，不提交；默认开发/测试仍可用 Fake，设置 `DRAMATIZER_PROVIDER=openai` 才会让网页实际调用 OpenAI。
+
+## 剩余动作
+
+1. 完成 Task 17 文档提交并推送 `feat/dramatizer-mvp`，核对本地与远端 HEAD。
+2. 隐藏启动 `scripts/dev.ps1`，等待 PostgreSQL/Phoenix/Oban 就绪。
+3. 对常驻 `http://127.0.0.1:4000/` 执行最后一次 Playwright 导航烟测并把进程留给用户。
