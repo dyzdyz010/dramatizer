@@ -6,6 +6,12 @@
 
 **工作阶段：** Task 1–17、全部 fresh gate、发布和常驻浏览器烟测均已完成；系统已留在本机供验收
 
+## 当前产品化迭代
+
+- 用户已确认继续采用“分阶段工作台＋每阶段真实 AI Proposal/Draft＋领域表单确认”的方案 A，决策记录为 [`implementation-alignment.md`](docs/implementation-alignment.md) D-060。
+- 完整工作台设计已写入 [`2026-07-15-production-workspace-v2-design.md`](docs/superpowers/specs/2026-07-15-production-workspace-v2-design.md)，覆盖信息架构、视觉语言、真实 AI 阶段自动化、Narrative/VisualDesign/ShotPlan 表单、来源语义、VisualVariant、连续性、Spec、QC、ChangeSet、Timeline、设置、错误恢复和全部 PRD 功能落点。
+- 该设计实现前，当前常驻服务仍处于 `fake` 模式，且旧 LiveView 仍有 Narrative、VisualDesign、ShotPlan 和模型参数 JSON 编辑面；它们是本轮必须消除的已知产品缺口，不再作为完成状态处理。
+
 ## 当前事实
 
 - 产品是本机、单用户、多 Project、无登录/认证/RBAC/权利安全子系统的功能优先制作台。
