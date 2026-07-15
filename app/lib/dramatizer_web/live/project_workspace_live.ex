@@ -54,11 +54,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       |> assign(:impact, nil)
       |> allow_upload(:source,
         accept: ~w(.txt .md .markdown .pdf),
+        auto_upload: true,
         max_entries: 5,
         max_file_size: 100_000_000
       )
       |> allow_upload(:media,
         accept: @image_extensions,
+        auto_upload: true,
         max_entries: 12,
         max_file_size: 25_000_000
       )
@@ -74,6 +76,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   end
 
   @impl Phoenix.LiveView
+  def handle_event("validate-upload", _params, socket), do: {:noreply, socket}
+
   def handle_event("import-source", _params, socket) do
     results =
       consume_uploaded_entries(socket, :source, fn %{path: path}, entry ->
@@ -92,9 +96,15 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       end)
 
     socket =
-      case Enum.find(results, &match?({:error, _}, &1)) do
-        nil -> socket |> put_flash(:info, "原著已按全文解析并落盘。") |> load_workspace()
-        {:error, reason} -> put_flash(socket, :error, human_error(reason))
+      case results do
+        [] ->
+          put_flash(socket, :error, "请先选择文件并等待上传完成。")
+
+        results ->
+          case Enum.find(results, &match?({:error, _}, &1)) do
+            nil -> socket |> put_flash(:info, "原著已按全文解析并落盘。") |> load_workspace()
+            {:error, reason} -> put_flash(socket, :error, human_error(reason))
+          end
       end
 
     {:noreply, socket}
@@ -114,9 +124,15 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       end)
 
     socket =
-      case Enum.find(results, &match?({:error, _}, &1)) do
-        nil -> socket |> put_flash(:info, "参考图已进入统一 AssetStore。") |> load_workspace()
-        {:error, reason} -> put_flash(socket, :error, human_error(reason))
+      case results do
+        [] ->
+          put_flash(socket, :error, "请先选择图片并等待上传完成。")
+
+        results ->
+          case Enum.find(results, &match?({:error, _}, &1)) do
+            nil -> socket |> put_flash(:info, "参考图已进入统一 AssetStore。") |> load_workspace()
+            {:error, reason} -> put_flash(socket, :error, human_error(reason))
+          end
       end
 
     {:noreply, socket}
@@ -264,6 +280,36 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       end)
 
     {:noreply, result_flash(socket, result, "候选图及 QC 已完成，等待人工选择。") |> load_workspace()}
+  end
+
+  def handle_event("inject-fake-failure", _params, socket) do
+    {:ok, spec} = fake_fault_spec(socket.assigns.project)
+
+    result =
+      Orchestrator.generate(spec, :shot_keyframe, socket.assigns.project,
+        fault_profile: fake_fault_profile()
+      )
+
+    socket =
+      case result do
+        {:error, :provider_rejected} -> put_flash(socket, :info, "Fake 首次提交已按计划失败。")
+        other -> result_flash(socket, other, "Fake 故障节点已执行。")
+      end
+
+    {:noreply, load_workspace(socket)}
+  end
+
+  def handle_event("resume-fake-failure", _params, socket) do
+    {:ok, spec} = fake_fault_spec(socket.assigns.project)
+
+    result =
+      Orchestrator.generate(spec, :shot_keyframe, socket.assigns.project,
+        fault_profile: fake_fault_profile()
+      )
+
+    {:noreply,
+     result_flash(socket, result, "Fake 节点已恢复；重复/乱序回调已去重。")
+     |> load_workspace()}
   end
 
   def handle_event("derive-draft", %{"revision-id" => id}, socket) do
@@ -427,7 +473,12 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               <div>
                 <h3>导入小说全文</h3>
                 <p class="muted">支持 TXT、Markdown 与带文本层 PDF；整本一次进入解析器。</p>
-                <form id="source-upload-form" phx-submit="import-source" class="upload-zone">
+                <form
+                  id="source-upload-form"
+                  phx-change="validate-upload"
+                  phx-submit="import-source"
+                  class="upload-zone"
+                >
                   <.live_file_input upload={@uploads.source} />
                   <.icon name="hero-arrow-up-tray" class="size-8" />
                   <strong>选择或拖入原著文件</strong>
@@ -435,7 +486,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                   <div :for={entry <- @uploads.source.entries} class="upload-progress">
                     <span>{entry.client_name}</span><progress value={entry.progress} max="100"></progress>
                   </div>
-                  <button class="btn btn-primary" type="submit">解析并落盘</button>
+                  <button
+                    class="btn btn-primary"
+                    type="submit"
+                    disabled={upload_unready?(@uploads.source.entries)}
+                  >
+                    解析并落盘
+                  </button>
                 </form>
               </div>
               <div>
@@ -522,12 +579,26 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                 />
                 <.button variant="primary">创建 VisualDesign</.button>
               </.form>
-              <form id="media-upload-form" phx-submit="import-media" class="upload-zone media-upload">
+              <form
+                id="media-upload-form"
+                phx-change="validate-upload"
+                phx-submit="import-media"
+                class="upload-zone media-upload"
+              >
                 <.live_file_input upload={@uploads.media} />
                 <.icon name="hero-photo" class="size-8" />
                 <strong>上传参考图</strong>
                 <span>PNG、JPG、JPEG、WEBP</span>
-                <button class="btn btn-primary" type="submit">存入素材库</button>
+                <div :for={entry <- @uploads.media.entries} class="upload-progress">
+                  <span>{entry.client_name}</span><progress value={entry.progress} max="100"></progress>
+                </div>
+                <button
+                  class="btn btn-primary"
+                  type="submit"
+                  disabled={upload_unready?(@uploads.media.entries)}
+                >
+                  存入素材库
+                </button>
               </form>
             </div>
             <.draft_editor :for={draft <- drafts_for(@drafts, :visual_design)} draft={draft} />
@@ -608,6 +679,25 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           </section>
 
           <section :if={@stage == :runs} class="workspace-panel">
+            <div
+              :if={Application.fetch_env!(:dramatizer, :provider_mode) == :fake}
+              class="fake-controls"
+              data-human-gate
+            >
+              <div>
+                <p class="eyebrow">OFFLINE RECOVERY CONTROL</p>
+                <h3>Fake 故障与幂等烟测</h3>
+                <p>首次提交失败；恢复时注入重复与乱序回调，验证只产生一个结果和一笔实际成本。</p>
+              </div>
+              <div>
+                <button type="button" class="btn btn-soft" phx-click="inject-fake-failure">
+                  注入一次 Fake 失败
+                </button>
+                <button type="button" class="btn btn-primary" phx-click="resume-fake-failure">
+                  恢复并注入重复乱序回调
+                </button>
+              </div>
+            </div>
             <RunPanel.run_panel runs={@runs} attempts={@attempts} costs={@costs} />
             <div :for={{old_revision, new_revision} <- @revision_pairs} class="trace-row">
               <div>
@@ -894,6 +984,31 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     :ok
   end
 
+  defp fake_fault_spec(project) do
+    Generation.create_spec(project, %{
+      kind: "recovery_probe",
+      candidate_index: 0,
+      formal: false,
+      payload: %{
+        "shot_id" => "RECOVERY",
+        "width" => 270,
+        "height" => 480,
+        "aspect_width" => 9,
+        "aspect_height" => 16,
+        "prompt" => "Fake recovery probe"
+      }
+    })
+  end
+
+  defp fake_fault_profile do
+    %{
+      fail_on_attempt: 1,
+      duplicate_callbacks: 3,
+      out_of_order_callbacks: true,
+      cost_micros: 23
+    }
+  end
+
   defp attempt_traces(project_id) do
     Repo.all(
       from attempt in Attempt,
@@ -1149,11 +1264,29 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
         %{
           "id" => "S001",
           "scene_id" => "SC001",
-          "description" => "建立环境与人物关系",
+          "description" => "雨夜车站建立环境与人物关系",
           "minimum_duration_ms" => 1_500,
           "preferred_duration_ms" => 2_000,
           "maximum_duration_ms" => 2_800,
           "camera" => "push_in"
+        },
+        %{
+          "id" => "S002",
+          "scene_id" => "SC001",
+          "description" => "林夏发现匿名信上的异常细节",
+          "minimum_duration_ms" => 1_400,
+          "preferred_duration_ms" => 1_800,
+          "maximum_duration_ms" => 2_500,
+          "camera" => "pan_left"
+        },
+        %{
+          "id" => "S003",
+          "scene_id" => "SC001",
+          "description" => "林夏抬头确认寄信人仍在附近",
+          "minimum_duration_ms" => 1_300,
+          "preferred_duration_ms" => 1_700,
+          "maximum_duration_ms" => 2_300,
+          "camera" => "pull_out"
         }
       ]
     }
@@ -1173,6 +1306,9 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp human_error(:analysis_snapshot_required), do: "请先完成全文分析。"
   defp human_error(:invalid_json), do: "JSON 格式无效。"
   defp human_error(reason), do: inspect(reason)
+
+  defp upload_unready?([]), do: true
+  defp upload_unready?(entries), do: Enum.any?(entries, &(&1.progress < 100))
 
   defp node_state(status) when status in [:queued, :running], do: :loading
   defp node_state(:failed), do: :failed

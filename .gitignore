@@ -3,5 +3,7 @@
 .worktrees/
 .env
 var/
+output/
+e2e/node_modules/
 .DS_Store
 Thumbs.db

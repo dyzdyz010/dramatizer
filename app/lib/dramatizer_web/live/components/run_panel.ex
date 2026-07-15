@@ -66,6 +66,6 @@ defmodule DramatizerWeb.Live.Components.RunPanel do
       |> Enum.filter(&(&1.entry_type == :actual))
       |> Enum.reduce(0, &((&1.amount_micros || 0) + &2))
 
-    "$" <> :erlang.float_to_binary(micros / 1_000_000, decimals: 4)
+    "$" <> :erlang.float_to_binary(micros / 1_000_000, decimals: 6)
   end
 end

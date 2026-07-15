@@ -1,26 +1,43 @@
 # Dramatizer
 
-面向 AI 视频与连续短剧生产的架构设计项目，目标是建立可追溯、可恢复、可审计且 Provider-neutral 的生产框架。
+本机单用户的 AI 短剧制作台。当前 MVP 已实现从 TXT、Markdown、文本型 PDF 小说全文导入，到分析、分集、视觉权威、参考图、三镜头关键帧、字幕时间线和 H.264/AAC Animatic 导出的可追溯闭环。默认使用 Fake Provider，可离线验证完整生产合同，不需要登录、权限或 API Key。
 
-## 设计版本
+## 本机运行
 
-- [`v0.2`](docs/ai_short_drama_framework_v0.2/README.md)：当前实施基线，包含 12 章设计、8 个 JSON Schema、7 组示例、4 张架构图、契约验证和跨模型审计记录。
-- [`v0.1`](docs/ai_short_drama_framework_v0.1/README.md)：早期顶层设计与原始设计文档。
-
-## 验证 v0.2
-
-在 PowerShell 7 中运行：
+需要 Docker Desktop、Elixir/OTP、Python 与 FFmpeg。首次准备：
 
 ```powershell
+Copy-Item .env.example .env
+./scripts/setup.ps1
+```
+
+启动制作台：
+
+```powershell
+./scripts/dev.ps1
+```
+
+浏览器打开 `http://127.0.0.1:4000/`。默认 `DRAMATIZER_PROVIDER=fake`；素材保存在 `var/assets`，PostgreSQL 只监听本机 `127.0.0.1:55432`。
+
+## 验证与运维
+
+```powershell
+./scripts/test.ps1
+./scripts/e2e.ps1
 ./docs/ai_short_drama_framework_v0.2/tools/validate_contracts.ps1
 ```
 
-验证覆盖 Draft 2020-12 Schema、合法示例、关键非法反例和本地 Markdown 链接。设计包文件完整性可通过 [`manifest.sha256`](docs/ai_short_drama_framework_v0.2/manifest.sha256) 核验。
+- `test.ps1`：ExUnit 单元、集成和验收测试。
+- `e2e.ps1`：在独立数据库、独立素材目录和 4100 端口运行真实 Chromium 全流程，验证 MP4/SRT 下载与 FFprobe，不污染开发库。
+- `backup.ps1` / `restore.ps1`：带写入检查点、数据库 dump、AssetStore manifest 和恢复后一致性校验的本地备份恢复。
 
-## 当前状态
+详细操作见 [`docs/runbooks/local-development.md`](docs/runbooks/local-development.md) 与 [`docs/runbooks/backup-restore.md`](docs/runbooks/backup-restore.md)。
 
-v0.2 已完成 Codex/GPT 与 Claude 的跨模型架构审计，当前没有未解决的 P0/P1 设计缺陷。真实 Provider、对象存储、数据库事务约束和发布平台行为仍须按路线图通过 Spike 与契约测试验证。
+## 设计与进度
 
-2026-07-14 起正在进行面向本机单用户版本的实施设计对齐。当前进度与跨电脑续接入口见 [`STATUS.md`](STATUS.md)，已经确认的增量决策见 [`docs/implementation-alignment.md`](docs/implementation-alignment.md)。v0.2 保持冻结，未在对齐过程中原地改写。
+- 当前 PRD：[`docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md`](docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md)
+- 冻结实施计划：[`docs/superpowers/plans/2026-07-15-dramatizer-mvp.md`](docs/superpowers/plans/2026-07-15-dramatizer-mvp.md)
+- 当前检查点：[`STATUS.md`](STATUS.md)
+- 原始冻结架构基线：[`docs/ai_short_drama_framework_v0.2/README.md`](docs/ai_short_drama_framework_v0.2/README.md)
 
-文本与图像 Animatic MVP 的完整 PRD/实施设计见 [`docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md`](docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md)。
+真实 OpenAI 文本、图像和语义 QC 使用同一生产路径，但只通过有成本上限的 `scripts/real-smoke.ps1` 验证；普通开发与 E2E 始终强制 Fake，避免意外付费。

@@ -6,10 +6,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
 
   alias Dramatizer.Projects
   alias Dramatizer.Assets.AssetVersion
+  alias Dramatizer.Costs.CostEntry
+  alias Dramatizer.Generation.Attempt
   alias Dramatizer.Quality.SelectionDecision
   alias Dramatizer.Revisions.Draft
   alias Dramatizer.Sources.SourceRevision
   alias Dramatizer.Timeline.{RenderManifest, Timeline}
+  alias Dramatizer.Workflow.InboxMessage
   alias Dramatizer.Repo
 
   setup do
@@ -78,6 +81,19 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert Repo.get_by!(SourceRevision, project_id: project.id).character_count > 0
   end
 
+  test "source import cannot report success without a completed upload", %{
+    conn: conn,
+    project: project
+  } do
+    {:ok, view, _html} = live(conn, "/projects/#{project.id}/source")
+
+    view |> form("#source-upload-form") |> render_submit()
+
+    refute render(view) =~ "原著已按全文解析并落盘。"
+    assert render(view) =~ "请先选择文件并等待上传完成。"
+    refute Repo.get_by(SourceRevision, project_id: project.id)
+  end
+
   test "workspace exposes explicit human gates and never auto-selects candidates", %{
     conn: conn,
     project: project
@@ -111,6 +127,27 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     {:ok, episodes, html} = live(conn, "/projects/#{project.id}/episodes")
     assert html =~ "雨夜来信"
     assert has_element?(episodes, "button[phx-click='select-episode']")
+  end
+
+  test "browser-visible Fake fault control resumes without duplicate result or cost", %{
+    conn: conn,
+    project: project
+  } do
+    {:ok, runs, _html} = live(conn, "/projects/#{project.id}/runs")
+    runs |> element("button", "注入一次 Fake 失败") |> render_click()
+    assert Repo.aggregate(Attempt, :count) == 1
+    assert Repo.one!(from attempt in Attempt, select: attempt.status) == :failed
+
+    runs |> element("button", "恢复并注入重复乱序回调") |> render_click()
+    assert Repo.aggregate(Attempt, :count) == 2
+    assert Repo.aggregate(AssetVersion, :count) == 1
+    assert Repo.aggregate(InboxMessage, :count) == 1
+    assert Repo.aggregate(from(cost in CostEntry, where: cost.entry_type == :actual), :count) == 1
+
+    runs |> element("button", "恢复并注入重复乱序回调") |> render_click()
+    assert Repo.aggregate(Attempt, :count) == 2
+    assert Repo.aggregate(AssetVersion, :count) == 1
+    assert Repo.aggregate(from(cost in CostEntry, where: cost.entry_type == :actual), :count) == 1
   end
 
   @tag timeout: 180_000

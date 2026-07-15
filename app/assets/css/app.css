@@ -303,6 +303,10 @@ button, a, input, textarea, select { outline-color: var(--studio-accent); }
 .impact-panel { margin-top: 1rem; padding: 1.2rem; border: 1px solid color-mix(in srgb, var(--studio-accent) 55%, var(--studio-line)); border-radius: 15px; background: color-mix(in srgb, var(--studio-accent) 5%, var(--studio-raised)); }
 .impact-panel h3 { margin: 0; }
 .impact-panel ul { max-height: 220px; overflow: auto; padding: .8rem 1.2rem; color: var(--studio-muted); font-size: .75rem; }
+.fake-controls { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.2rem; padding: 1rem; border: 1px dashed color-mix(in srgb, var(--studio-teal) 52%, var(--studio-line)); border-radius: 14px; background: color-mix(in srgb, var(--studio-teal) 5%, var(--studio-raised)); }
+.fake-controls h3, .fake-controls p { margin: 0; }
+.fake-controls p:last-child { margin-top: .35rem; color: var(--studio-muted); font-size: .74rem; }
+.fake-controls > div:last-child { display: flex; gap: .5rem; }
 
 .candidate-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
 .candidate-card { overflow: hidden; border: 1px solid var(--studio-line); border-radius: 15px; background: var(--studio-raised); }
@@ -336,6 +340,8 @@ button, a, input, textarea, select { outline-color: var(--studio-accent); }
 .subtitle-field { display: grid; gap: .3rem; }
 .subtitle-field > span { color: var(--studio-muted); font-size: .72rem; }
 .render-list { display: grid; gap: .35rem; }
+.render-list .trace-row { grid-template-columns: 1fr auto auto; }
+.render-downloads { display: flex; gap: .35rem; }
 
 .trace-list { display: grid; }
 .trace-row { display: grid; grid-template-columns: auto 1fr auto; }

@@ -456,12 +456,12 @@ Changes.resolve_stale(selection, :pin_old_input | {:replace, asset_id})
 - Modify: `README.md`
 - Modify: `STATUS.md`
 
-- [ ] Add named ExUnit acceptance tests mapping every offline AT and assert full lineage from TimelineClip back to source revisions.
-- [ ] Add a browser test that creates a Project, uploads the fixture, runs Fake analysis/production, confirms drafts, generates/selects candidates, edits Timeline/subtitles, previews, freezes, exports, opens run/cost trace, and downloads/locates MP4/SRT.
-- [ ] Inject one Fake node failure and a duplicate/out-of-order callback through test controls; resume in the browser and assert no duplicated candidate/cost.
-- [ ] Run FFprobe assertions on E2E MP4 and direct HTTP checks for all stage routes and finalized local asset serving.
-- [ ] Verify: `./scripts/test.ps1`; `./scripts/e2e.ps1`; `./docs/ai_short_drama_framework_v0.2/tools/validate_contracts.ps1`; `git diff --check`.
-- [ ] Commit: `test: prove fake MVP end to end`.
+- [x] Add named ExUnit acceptance tests mapping every offline AT and assert full lineage from TimelineClip back to source revisions.
+- [x] Add a browser test that creates a Project, uploads the fixture, runs Fake analysis/production, confirms drafts, generates/selects candidates, edits Timeline/subtitles, previews, freezes, exports, opens run/cost trace, and downloads/locates MP4/SRT.
+- [x] Inject one Fake node failure and a duplicate/out-of-order callback through test controls; resume in the browser and assert no duplicated candidate/cost.
+- [x] Run FFprobe assertions on E2E MP4 and direct HTTP checks for all stage routes and finalized local asset serving.
+- [x] Verify: `./scripts/test.ps1`; `./scripts/e2e.ps1`; `./docs/ai_short_drama_framework_v0.2/tools/validate_contracts.ps1`; `git diff --check`.
+- [x] Commit: `test: prove fake MVP end to end`.
 
 ### Task 16: Run the real OpenAI text/image/QC smoke gate
 

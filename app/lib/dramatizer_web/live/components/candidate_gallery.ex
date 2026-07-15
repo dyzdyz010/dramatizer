@@ -67,7 +67,7 @@ defmodule DramatizerWeb.Live.Components.CandidateGallery do
                 end}
               </span>
               <strong>
-                ${:erlang.float_to_binary(candidate.cost_micros / 1_000_000, decimals: 4)}
+                ${:erlang.float_to_binary(candidate.cost_micros / 1_000_000, decimals: 6)}
               </strong>
             </div>
             <button

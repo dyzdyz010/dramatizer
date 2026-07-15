@@ -94,6 +94,24 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
               <p>{render.width}×{render.height} · {render.duration_ms} ms</p>
             </div>
             <.state_badge state={render_state(render.status)} />
+            <div :if={render.status == :rendered} class="render-downloads">
+              <a
+                :if={render.output_asset_id}
+                href={"/media/#{render.output_asset_id}"}
+                download={"dramatizer-#{render.render_mode}.mp4"}
+                class="btn btn-ghost"
+              >
+                MP4
+              </a>
+              <a
+                :if={render.srt_asset_id}
+                href={"/media/#{render.srt_asset_id}"}
+                download={"dramatizer-#{render.render_mode}.srt"}
+                class="btn btn-ghost"
+              >
+                SRT
+              </a>
+            </div>
           </article>
         </div>
       </div>
