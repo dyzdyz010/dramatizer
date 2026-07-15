@@ -1,0 +1,18 @@
+{
+  "id": "resp_fixture_001",
+  "object": "response",
+  "status": "completed",
+  "output": [
+    {
+      "type": "message",
+      "role": "assistant",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "{\"items\":[{\"id\":\"person:p1\",\"kind\":\"person\",\"name\":\"林夏\",\"source_semantics\":\"source_grounded\",\"locators\":[{\"source_revision_id\":\"11111111-1111-1111-1111-111111111111\",\"start_offset\":0,\"end_offset\":2}],\"references\":[],\"data\":{}}]}"
+        }
+      ]
+    }
+  ],
+  "usage": {"input_tokens": 120, "output_tokens": 40, "total_tokens": 160}
+}

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DramatizerAnalysisItems",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["items"],
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "name", "source_semantics", "locators", "references", "data"],
+        "properties": {
+          "id": {"type": "string", "minLength": 1},
+          "kind": {"type": "string", "minLength": 1},
+          "name": {"type": "string", "minLength": 1},
+          "source_semantics": {
+            "type": "string",
+            "enum": ["source_grounded", "inferred", "creative"]
+          },
+          "locators": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source_revision_id", "start_offset", "end_offset"],
+              "properties": {
+                "source_revision_id": {"type": "string", "minLength": 1},
+                "start_offset": {"type": "integer", "minimum": 0},
+                "end_offset": {"type": "integer", "minimum": 0},
+                "page": {"type": "integer", "minimum": 1}
+              }
+            }
+          },
+          "references": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1}
+          },
+          "data": {"type": "object"}
+        }
+      }
+    }
+  }
+}

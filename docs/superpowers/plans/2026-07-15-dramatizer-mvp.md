@@ -244,13 +244,13 @@ TokenEstimator.preflight(text, resolved_model, reserved_tokens)
 
 **DAG nodes:** `people_relations`, `places_props_world`, `events_timeline`, `entity_merge`, `episode_candidates`, `conflict_check`.
 
-- [ ] Test three full-text roots can run independently; required descendants stay blocked; retry only appends to failed node; final immutable snapshot contains all exact source revisions and task snapshots.
-- [ ] Add strict JSON Schemas with `source_grounded|inferred|creative` and source locators; validate JSON Schema first, then reference integrity, uniqueness, range, and domain rules with stable JSON-pointer error paths.
-- [ ] Test invalid JSON, dangling references, and missing locators produce at most two structured repair Attempts, then success or a stable failed node.
-- [ ] Implement `OpenAIResponses` with Req against `POST /v1/responses`, `store: false`, `text.format.type=json_schema`, strict schema, model/effort from resolved config, request ID/usage capture, timeout/error mapping, and output extraction from response items.
-- [ ] Contract-test the adapter with a local Plug stub; no live key is needed in this task.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer/analysis test/dramatizer/generation/openai_responses_test.exs; Pop-Location`.
-- [ ] Commit: `feat: analyze whole novels with repairable structured outputs`.
+- [x] Test three full-text roots can run independently; required descendants stay blocked; retry only appends to failed node; final immutable snapshot contains all exact source revisions and task snapshots.
+- [x] Add strict JSON Schemas with `source_grounded|inferred|creative` and source locators; validate JSON Schema first, then reference integrity, uniqueness, range, and domain rules with stable JSON-pointer error paths.
+- [x] Test invalid JSON, dangling references, and missing locators produce at most two structured repair Attempts, then success or a stable failed node.
+- [x] Implement `OpenAIResponses` with Req against `POST /v1/responses`, `store: false`, `text.format.type=json_schema`, strict schema, model/effort from resolved config, request ID/usage capture, timeout/error mapping, and output extraction from response items.
+- [x] Contract-test the adapter with a local Plug stub; no live key is needed in this task.
+- [x] Verify: `Push-Location app; mix test test/dramatizer/analysis test/dramatizer/generation/openai_responses_test.exs; Pop-Location`.
+- [x] Commit: `feat: analyze whole novels with repairable structured outputs`.
 
 ### Task 8: Materialize episodes and compile confirmed production revisions
 

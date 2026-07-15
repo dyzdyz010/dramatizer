@@ -1,0 +1,191 @@
+defmodule Dramatizer.Analysis do
+  @moduledoc "Executes analysis nodes with an initial Attempt and at most two structured repairs."
+
+  alias Dramatizer.Analysis.{Schemas, Validator}
+  alias Dramatizer.CanonicalJSON
+  alias Dramatizer.Generation
+  alias Dramatizer.Generation.Adapters.OpenAIResponses
+  alias Dramatizer.Projects.Project
+  alias Dramatizer.Workflow
+  alias Dramatizer.Workflow.NodeRun
+
+  @max_attempts 3
+
+  def run_node(%NodeRun{} = node, %Project{} = project, fixture_outputs)
+      when is_list(fixture_outputs) do
+    provider = fn _snapshot, _attempt, index ->
+      case Enum.fetch(fixture_outputs, index) do
+        {:ok, output} -> {:ok, %{output: output}}
+        :error -> {:error, :fixture_output_exhausted, %{}}
+      end
+    end
+
+    execute(node, project, provider, :fixture)
+  end
+
+  def run_node_live(%NodeRun{} = node, %Project{} = project) do
+    provider = fn snapshot, attempt, _index -> OpenAIResponses.submit(snapshot, attempt) end
+    execute(node, project, provider, :resolved)
+  end
+
+  defp execute(node, project, provider, mode) do
+    with {:ok, running} <- Workflow.transition_node(node, :running) do
+      attempt_loop(running, project, provider, mode, 0, [], [], nil)
+    end
+  end
+
+  defp attempt_loop(
+         node,
+         project,
+         provider,
+         mode,
+         index,
+         snapshot_ids,
+         previous_errors,
+         previous_output
+       )
+       when index < @max_attempts do
+    task_type = String.to_existing_atom(node.node_key)
+    schema = Schemas.fetch!(task_type)
+
+    spec_payload = %{
+      "node_run_id" => node.id,
+      "node_run_count" => node.run_count,
+      "repair_index" => index,
+      "input_hash" => node.input_hash,
+      "validation_errors" => stringify(previous_errors)
+    }
+
+    request_input = %{
+      "input" =>
+        request_text(node.input_snapshot["whole_document"], previous_output, previous_errors),
+      "schema_name" => Atom.to_string(task_type),
+      "schema" => schema,
+      "source_revision_ids" => node.input_snapshot["source_revision_ids"],
+      "repair_index" => index
+    }
+
+    override =
+      if mode == :fixture,
+        do: %{adapter: "fixture", credential_ref: "none", model: "fixture-analysis-v1"},
+        else: %{}
+
+    with {:ok, spec} <-
+           Generation.create_spec(project, %{kind: node.node_key, payload: spec_payload}),
+         {:ok, snapshot, attempt} <-
+           Generation.prepare_attempt(spec, task_type, project, %{
+             task_override: override,
+             node_run_id: node.id,
+             request_input: request_input,
+             prompt_snapshot: %{
+               "schema_version" => Schemas.version(),
+               "schema_hash" => CanonicalJSON.hash(schema)
+             }
+           }),
+         {:ok, submitted} <- Generation.transition_attempt(attempt, :submitted) do
+      current_snapshot_ids = snapshot_ids ++ [snapshot.id]
+
+      case provider.(snapshot, submitted, index) do
+        {:ok, provider_result} ->
+          validate_provider_result(
+            node,
+            project,
+            provider,
+            mode,
+            index,
+            current_snapshot_ids,
+            submitted,
+            provider_result.output
+          )
+
+        {:error, code, metadata} ->
+          Generation.transition_attempt(submitted, :failed, %{
+            error_code: to_string(code),
+            error_message: to_string(code),
+            response_metadata: stringify(metadata)
+          })
+
+          fail_node(node, :provider_failed, current_snapshot_ids, [%{code: code, path: "/"}])
+      end
+    end
+  end
+
+  defp validate_provider_result(
+         node,
+         project,
+         provider,
+         mode,
+         index,
+         snapshot_ids,
+         attempt,
+         output
+       ) do
+    case Validator.validate(String.to_existing_atom(node.node_key), output,
+           source_revision_ids: node.input_snapshot["source_revision_ids"]
+         ) do
+      {:ok, validated} ->
+        {:ok, _succeeded_attempt} =
+          Generation.transition_attempt(attempt, :succeeded, %{
+            response_metadata: %{
+              "output_hash" => CanonicalJSON.hash(validated),
+              "validated" => true
+            }
+          })
+
+        Workflow.transition_node(node, :succeeded, %{
+          result: %{
+            "output" => validated,
+            "provider_request_snapshot_ids" => snapshot_ids,
+            "repair_attempts" => index
+          }
+        })
+
+      {:error, errors} ->
+        {:ok, _failed_attempt} =
+          Generation.transition_attempt(attempt, :failed, %{
+            error_code: "structured_validation_failed",
+            error_message: "structured_validation_failed",
+            response_metadata: %{"validation_errors" => stringify(errors)}
+          })
+
+        if index + 1 < @max_attempts do
+          attempt_loop(node, project, provider, mode, index + 1, snapshot_ids, errors, output)
+        else
+          fail_node(node, :structured_validation_failed, snapshot_ids, errors)
+        end
+    end
+  end
+
+  defp fail_node(node, code, snapshot_ids, errors) do
+    {:ok, failed} =
+      Workflow.transition_node(node, :failed, %{
+        error_code: to_string(code),
+        result: %{
+          "provider_request_snapshot_ids" => snapshot_ids,
+          "validation_errors" => stringify(errors)
+        }
+      })
+
+    {:error, code, failed}
+  end
+
+  defp request_text(whole_document, nil, []), do: whole_document
+
+  defp request_text(whole_document, previous_output, errors) do
+    """
+    #{whole_document}
+
+    修复上一份结构化输出。不得删除信息或猜测字段；仅按错误路径修复。
+    errors=#{Jason.encode!(stringify(errors))}
+    previous_output=#{Jason.encode!(previous_output)}
+    """
+  end
+
+  defp stringify(value) when is_map(value) do
+    Map.new(value, fn {key, nested} -> {to_string(key), stringify(nested)} end)
+  end
+
+  defp stringify(value) when is_list(value), do: Enum.map(value, &stringify/1)
+  defp stringify(value) when is_atom(value), do: Atom.to_string(value)
+  defp stringify(value), do: value
+end
