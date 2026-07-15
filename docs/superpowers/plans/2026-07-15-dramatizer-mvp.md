@@ -93,13 +93,13 @@ Revisions.confirm_draft(draft_id)
 Revisions.derive_draft(revision_id)
 ```
 
-- [ ] Add failing migrations/context tests for multiple projects, archive/rename, 9:16 defaults, Project/Episode override precedence, task/Project/system model precedence, task-scoped Appendix revisions, and immutable confirmed revisions.
-- [ ] Implement `projects`, `production_profiles`, `model_overrides`, `prompt_appendices`, `drafts`, and `revisions` with database constraints for kind/status/hash uniqueness and immutable revisions (changeset exposes no update operation).
-- [ ] Add hidden versioned CorePrompt files for people/relations, places/props/world, events/timeline, entity merge, episode candidates, conflict check, directing proposal, image prompt, structured repair, and semantic QC.
-- [ ] Compose `CorePrompt + Appendix` in fixed order, save component hashes, and assert one task appendix cannot leak into another.
-- [ ] Add deterministic canonical JSON hashing for profile/config/revision snapshots.
-- [ ] Verify: `Push-Location app; mix ecto.migrate; mix test test/dramatizer/projects_test.exs test/dramatizer/revisions_test.exs test/dramatizer/generation/config_resolver_test.exs test/dramatizer/prompts/composer_test.exs; Pop-Location`.
-- [ ] Commit: `feat: add project configuration and revision authority`.
+- [x] Add failing migrations/context tests for multiple projects, archive/rename, 9:16 defaults, Project/Episode override precedence, task/Project/system model precedence, task-scoped Appendix revisions, and immutable confirmed revisions.
+- [x] Implement `projects`, `production_profiles`, `model_overrides`, `prompt_appendices`, `drafts`, and `revisions` with database constraints for kind/status/hash uniqueness and immutable revisions (changeset exposes no update operation).
+- [x] Add hidden versioned CorePrompt files for people/relations, places/props/world, events/timeline, entity merge, episode candidates, conflict check, directing proposal, image prompt, structured repair, and semantic QC.
+- [x] Compose `CorePrompt + Appendix` in fixed order, save component hashes, and assert one task appendix cannot leak into another.
+- [x] Add deterministic canonical JSON hashing for profile/config/revision snapshots.
+- [x] Verify: `Push-Location app; mix ecto.migrate; mix test test/dramatizer/projects_test.exs test/dramatizer/revisions_test.exs test/dramatizer/generation/config_resolver_test.exs test/dramatizer/prompts/composer_test.exs; Pop-Location`.
+- [x] Commit: `feat: add project configuration and revision authority`.
 
 ### Task 3: Implement AssetStore staging, finalize, lineage, and media probes
 

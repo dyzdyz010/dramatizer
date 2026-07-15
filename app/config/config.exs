@@ -28,6 +28,36 @@ config :dramatizer, Oban,
   queues: [workflow: 5, generation: 3, media: 2, qc: 3],
   plugins: [{Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60}]
 
+text_model = %{
+  adapter: "openai_responses",
+  credential_ref: "OPENAI_API_KEY",
+  model: "gpt-5.6-terra",
+  params: %{"reasoning" => %{"effort" => "medium"}}
+}
+
+image_model = %{
+  adapter: "openai_images",
+  credential_ref: "OPENAI_API_KEY",
+  model: "gpt-image-2",
+  params: %{"quality" => "medium", "size" => "1024x1536"}
+}
+
+config :dramatizer, :model_defaults, %{
+  people_relations: text_model,
+  places_props_world: text_model,
+  events_timeline: text_model,
+  entity_merge: text_model,
+  episode_candidates: text_model,
+  conflict_check: text_model,
+  directing_proposal: text_model,
+  image_prompt: text_model,
+  structured_repair: text_model,
+  semantic_qc: text_model,
+  reference_image: image_model,
+  shot_keyframe: image_model,
+  image_edit: image_model
+}
+
 # Configure the endpoint
 config :dramatizer, DramatizerWeb.Endpoint,
   url: [host: "localhost"],
