@@ -32,7 +32,7 @@ defmodule DramatizerWeb.Live.Components.CandidateGallery do
           <div class="candidate-card__body">
             <div class="candidate-meta">
               <span>候选 #{candidate.index + 1}</span>
-              <span>{candidate.spec_kind}</span>
+              <span>{if candidate.formal, do: "正式候选", else: "探索候选"}</span>
             </div>
             <p class="candidate-summary">{candidate.summary}</p>
             <div

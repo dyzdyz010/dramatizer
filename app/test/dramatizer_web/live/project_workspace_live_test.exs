@@ -225,6 +225,23 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert has_element?(episodes, "form[phx-submit='save-narrative-draft']")
     refute html =~ "结构化内容"
     refute has_element?(episodes, "textarea[name='draft[payload]']")
+
+    narrative = Repo.get_by!(Draft, project_id: project.id, kind: :narrative, status: :editing)
+    episodes |> element("button[phx-value-id='#{narrative.id}']", "确认并冻结") |> render_click()
+
+    assert Repo.get_by!(Draft,
+             project_id: project.id,
+             kind: :visual_design,
+             status: :editing
+           )
+
+    {:ok, visuals, visual_html} = live(conn, "/projects/#{project.id}/visuals")
+    assert visual_html =~ "角色"
+    assert visual_html =~ "场景"
+    assert visual_html =~ "道具"
+    assert visual_html =~ "视觉 Variant"
+    assert has_element?(visuals, "form[phx-submit='save-visual-design-draft']")
+    refute visual_html =~ "角色／场景／道具对象 JSON"
   end
 
   test "browser-visible Fake fault control resumes without duplicate result or cost", %{
@@ -264,41 +281,31 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
 
     {:ok, visuals, _html} = live(conn, "/projects/#{project.id}/visuals")
 
-    objects = [
-      %{
-        "id" => "prop:letter",
-        "type" => "prop",
-        "name" => "匿名信",
-        "key" => true,
-        "variants" => [%{"id" => "sealed", "material" => "旧纸"}]
-      }
-    ]
-
-    visuals
-    |> form("form[phx-submit='create-visual-design']",
-      visual: %{objects: Jason.encode!(objects)}
-    )
-    |> render_submit()
-
     visual = Repo.get_by!(Draft, project_id: project.id, kind: :visual_design, status: :editing)
     visuals |> element("button[phx-value-id='#{visual.id}']", "确认并冻结") |> render_click()
     visuals |> element("button", "AI 生成参考候选") |> render_click()
+
+    required_slots =
+      for object <- visual.payload["objects"],
+          object["reference_required"],
+          variant <- object["variants"],
+          slot <- variant["required_slots"] do
+        "#{object["id"]}/#{variant["id"]}/#{slot}"
+      end
 
     assert Repo.aggregate(
              from(spec in GenerationSpec,
                where: spec.project_id == ^project.id and spec.kind == "reference_image"
              ),
              :count
-           ) == 8
+           ) == length(required_slots) * 4
 
     assert has_element?(visuals, ".candidate-card")
 
-    for slot <- ~w(overall key_detail_state) do
-      slot_key = "reference:prop:letter/sealed/#{slot}"
-
+    for slot <- required_slots do
       visuals
       |> element(
-        "button[phx-click='select-candidate'][phx-value-slot-key='#{slot_key}'][data-candidate-index='0']",
+        "button[phx-click='select-candidate'][phx-value-slot-key='reference:#{slot}'][data-candidate-index='0']",
         "选择此候选"
       )
       |> render_click()
@@ -354,7 +361,6 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     episodes |> element("button[phx-value-id='#{narrative.id}']", "确认并冻结") |> render_click()
 
     {:ok, visuals, _html} = live(conn, "/projects/#{project.id}/visuals")
-    visuals |> form("form[phx-submit='create-visual-design']") |> render_submit()
     visual = Repo.get_by!(Draft, project_id: project.id, kind: :visual_design, status: :editing)
     visuals |> element("button[phx-value-id='#{visual.id}']", "确认并冻结") |> render_click()
 

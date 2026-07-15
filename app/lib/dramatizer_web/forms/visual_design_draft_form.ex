@@ -44,8 +44,19 @@ defmodule DramatizerWeb.Forms.VisualDesignDraftForm do
     if errors == %{}, do: {:ok, payload}, else: {:error, errors}
   end
 
+  def add(payload, "variants:" <> object_id, item),
+    do: update_object_collection(payload, object_id, &F.add(&1, "variants", item))
+
   def add(payload, collection, item), do: F.add(payload, collection, item)
+
+  def remove(payload, "variants:" <> object_id, id),
+    do: update_object_collection(payload, object_id, &F.remove(&1, "variants", id))
+
   def remove(payload, collection, id), do: F.remove(payload, collection, id)
+
+  def move(payload, "variants:" <> object_id, id, direction),
+    do: update_object_collection(payload, object_id, &F.move(&1, "variants", id, direction))
+
   def move(payload, collection, id, direction), do: F.move(payload, collection, id, direction)
 
   defp cast_object(params, current) do
@@ -111,6 +122,11 @@ defmodule DramatizerWeb.Forms.VisualDesignDraftForm do
       "materials" => F.text_list(F.value(params, current, "materials", [])),
       "must_show" => F.text_list(F.value(params, current, "must_show", [])),
       "must_not_show" => F.text_list(F.value(params, current, "must_not_show", [])),
+      "type_details" =>
+        F.merge_preserving(
+          Map.get(current, "type_details", %{}),
+          Map.get(params, "type_details", %{})
+        ),
       "variants" => variants
     })
   end
@@ -170,4 +186,12 @@ defmodule DramatizerWeb.Forms.VisualDesignDraftForm do
 
   defp semantics(value) when value in ~w(source_grounded inferred creative), do: value
   defp semantics(_value), do: "source_grounded"
+
+  defp update_object_collection(payload, object_id, updater) do
+    Map.update(F.string_keys(payload), "objects", [], fn objects ->
+      Enum.map(objects, fn object ->
+        if object["id"] == object_id, do: updater.(object), else: object
+      end)
+    end)
+  end
 end

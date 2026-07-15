@@ -39,7 +39,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   alias Dramatizer.Visuals
   alias Dramatizer.Workflow
   alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
-  alias DramatizerWeb.Forms.{ModelOverrideForm, NarrativeDraftForm}
+  alias DramatizerWeb.Forms.{ModelOverrideForm, NarrativeDraftForm, VisualDesignDraftForm}
 
   alias DramatizerWeb.Live.Components.{
     AnalysisReview,
@@ -49,7 +49,9 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     ProviderStatus,
     RunPanel,
     StageNav,
-    TimelineEditor
+    TimelineEditor,
+    ReferenceMatrix,
+    VisualDesignEditor
   }
 
   @stages ~w(source analysis episodes visuals shots timeline runs)a
@@ -361,9 +363,87 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   end
 
   def handle_event("confirm-draft", %{"id" => id}, socket) do
-    {:noreply,
-     result_flash(socket, Revisions.confirm_draft(id), "已冻结为不可变 Revision。")
-     |> load_workspace()}
+    socket =
+      case Revisions.confirm_draft(id) do
+        {:ok, %Revision{kind: :narrative} = narrative} ->
+          case create_visual_proposal(socket.assigns.project, narrative) do
+            {:ok, _draft} ->
+              put_flash(socket, :info, "Narrative 已冻结，VisualDesign 提案已生成。")
+
+            {:error, reason} ->
+              put_flash(
+                socket,
+                :error,
+                "Narrative 已冻结，但 VisualDesign 提案生成失败：#{human_error(reason)}"
+              )
+          end
+
+        {:ok, _revision} ->
+          put_flash(socket, :info, "已冻结为不可变 Revision。")
+
+        {:error, reason} ->
+          put_flash(socket, :error, human_error(reason))
+      end
+
+    {:noreply, load_workspace(socket)}
+  end
+
+  def handle_event("save-visual-design-draft", %{"id" => id, "visual_design" => params}, socket) do
+    draft = Repo.get!(Draft, id)
+
+    result =
+      with :visual_design <- draft.kind,
+           {:ok, payload} <- VisualDesignDraftForm.cast(params, draft.payload) do
+        Revisions.replace_draft_payload(draft, payload)
+      else
+        {:error, errors} -> {:error, {:form_validation, errors}}
+        _other -> {:error, :invalid_visual_design}
+      end
+
+    {:noreply, result_flash(socket, result, "VisualDesign Draft 已保存。") |> load_workspace()}
+  end
+
+  def handle_event(
+        "add-visual-item",
+        %{"id" => id, "collection" => collection} = params,
+        socket
+      ) do
+    mutate_visual_draft(socket, id, fn payload ->
+      type = visual_collection_type(payload, collection, Map.get(params, "type"))
+
+      VisualDesignDraftForm.add(
+        payload,
+        collection,
+        visual_item(collection, type)
+      )
+    end)
+  end
+
+  def handle_event(
+        "remove-visual-item",
+        %{"id" => id, "collection" => collection, "item-id" => item_id},
+        socket
+      ) do
+    mutate_visual_draft(socket, id, fn payload ->
+      VisualDesignDraftForm.remove(payload, collection, item_id)
+    end)
+  end
+
+  def handle_event(
+        "move-visual-item",
+        %{
+          "id" => id,
+          "collection" => collection,
+          "item-id" => item_id,
+          "direction" => direction
+        },
+        socket
+      ) do
+    parsed_direction = if direction == "up", do: :up, else: :down
+
+    mutate_visual_draft(socket, id, fn payload ->
+      VisualDesignDraftForm.move(payload, collection, item_id, parsed_direction)
+    end)
   end
 
   def handle_event("create-visual-design", %{"visual" => %{"objects" => json}}, socket) do
@@ -901,17 +981,15 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           </section>
 
           <section :if={@stage == :visuals} class="workspace-panel" data-human-gate>
-            <div class="two-column">
-              <.form for={@visual_form} phx-submit="create-visual-design" class="structured-form">
-                <h3>建立视觉权威草稿</h3>
-                <.input
-                  field={@visual_form[:objects]}
-                  type="textarea"
-                  label="角色／场景／道具对象 JSON"
-                  rows="14"
-                />
-                <.button variant="primary">创建 VisualDesign</.button>
-              </.form>
+            <VisualDesignEditor.visual_design_editor
+              :for={draft <- drafts_for(@drafts, :visual_design)}
+              draft={draft}
+            />
+            <div :if={drafts_for(@drafts, :visual_design) == []} class="empty-panel">
+              <h3>等待 Narrative 权威</h3>
+              <p>确认 Narrative 后，系统会自动调用 AI 生成角色、场景、道具和 Variant 提案。</p>
+            </div>
+            <div class="visual-tool-row">
               <form
                 id="media-upload-form"
                 phx-change="validate-upload"
@@ -934,7 +1012,6 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                 </button>
               </form>
             </div>
-            <.draft_editor :for={draft <- drafts_for(@drafts, :visual_design)} draft={draft} />
             <div :if={@reference_slots != []} class="panel-actions production-actions">
               <button type="button" class="btn btn-primary" phx-click="generate-reference-candidates">
                 AI 生成参考候选
@@ -948,34 +1025,15 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               </button>
             </div>
             <CandidateGallery.candidate_gallery candidates={@reference_candidates} />
-            <.form
-              :if={@reference_slots != []}
-              for={to_form(%{}, as: :reference)}
-              id="reference-set-form"
-              phx-submit="create-reference-set"
-              class="structured-form"
-            >
-              <div class="section-heading compact">
-                <div>
-                  <p class="eyebrow">PRIMARY REFERENCES</p>
-                  <h3>逐槽位选择主参考图</h3>
-                </div>
-                <span class="count-pill">{length(@reference_slots)}</span>
-              </div>
-              <div class="reference-slot-grid">
-                <label :for={slot <- @reference_slots}>
-                  <span>{slot}</span>
-                  <select name={"reference[assignments][#{slot}]"} class="select w-full">
-                    <option value="">请选择，不自动指定</option>
-                    <option :for={asset <- @reference_assets} value={asset.id}>
-                      {String.slice(asset.blob_hash, 0, 12)} · {asset.width}×{asset.height}
-                    </option>
-                  </select>
-                </label>
-              </div>
-              <.button variant="primary">创建 ReferenceSet 草稿</.button>
-            </.form>
-            <.draft_editor :for={draft <- drafts_for(@drafts, :reference_set)} draft={draft} />
+            <ReferenceMatrix.reference_matrix
+              slots={@reference_slots}
+              candidates={@reference_candidates}
+              assets={@reference_assets}
+            />
+            <.reference_set_editor
+              :for={draft <- drafts_for(@drafts, :reference_set)}
+              draft={draft}
+            />
           </section>
 
           <section :if={@stage == :shots} class="workspace-panel" data-human-gate>
@@ -1158,6 +1216,138 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     </article>
     """
   end
+
+  attr :draft, :map, required: true
+
+  defp reference_set_editor(assigns) do
+    assigns =
+      assigns
+      |> assign(:required_count, length(assigns.draft.payload["required_slots"] || []))
+      |> assign(:selected_count, map_size(assigns.draft.payload["primary_assets"] || %{}))
+
+    ~H"""
+    <article class="authority-editor reference-set-editor">
+      <div class="section-heading compact">
+        <div>
+          <p class="eyebrow">REFERENCE SET AUTHORITY</p>
+          <h3>主参考图集合</h3>
+          <p>每个必需槽位都明确绑定一个不可变 AssetVersion。</p>
+        </div>
+        <.state_badge state={if @draft.status == :confirmed, do: :ready, else: :waiting_user} />
+      </div>
+      <div class="confirmed-authority-summary">
+        <div><span>必需槽位</span><strong>{@required_count}</strong></div>
+        <div><span>已选择</span><strong>{@selected_count}</strong></div>
+        <div>
+          <span>完整度</span><strong>{if @required_count == @selected_count, do: "完整", else: "待补充"}</strong>
+        </div>
+      </div>
+      <div class="form-actions">
+        <button
+          :if={@draft.status == :editing}
+          type="button"
+          class="btn btn-primary"
+          phx-click="confirm-draft"
+          phx-value-id={@draft.id}
+        >
+          确认并冻结 Revision
+        </button>
+        <button
+          :if={@draft.status == :confirmed and @draft.confirmed_revision_id}
+          type="button"
+          class="btn btn-ghost"
+          phx-click="derive-draft"
+          phx-value-revision-id={@draft.confirmed_revision_id}
+        >从此 Revision 派生修改</button>
+      </div>
+    </article>
+    """
+  end
+
+  defp create_visual_proposal(project, narrative) do
+    with {:ok, authority} <- Visuals.proposal_authority(narrative),
+         {:ok, proposal} <-
+           StructuredTextProposal.propose(project, :visual_design_proposal, authority) do
+      Visuals.create_proposal_draft(project, narrative, proposal.output)
+    end
+  end
+
+  defp mutate_visual_draft(socket, draft_id, mutation) do
+    draft = Repo.get!(Draft, draft_id)
+    changed = mutation.(draft.payload)
+
+    result =
+      with :visual_design <- draft.kind,
+           {:ok, payload} <-
+             VisualDesignDraftForm.cast(
+               VisualDesignDraftForm.from_payload(changed),
+               draft.payload
+             ) do
+        Revisions.replace_draft_payload(draft, payload)
+      else
+        {:error, errors} -> {:error, {:form_validation, errors}}
+        _other -> {:error, :invalid_visual_design}
+      end
+
+    {:noreply, result_flash(socket, result, "VisualDesign Draft 已更新。") |> load_workspace()}
+  end
+
+  defp visual_item("objects", type) do
+    %{
+      "id" => generated_id(String.upcase(type)),
+      "type" => type,
+      "name" => "新#{visual_type_label(type)}",
+      "narrative_role" => "待补充",
+      "importance" => "supporting",
+      "recurring" => false,
+      "key" => false,
+      "reference_required" => false,
+      "source_semantics" => "creative",
+      "description" => "待补充视觉定义",
+      "palette" => [],
+      "materials" => [],
+      "must_show" => [],
+      "must_not_show" => [],
+      "type_details" => %{},
+      "variants" => [visual_item("variants:new", type)]
+    }
+  end
+
+  defp visual_item("variants:" <> _object_id, type) do
+    %{
+      "id" => generated_id("VAR"),
+      "name" => "新状态",
+      "state_description" => "待补充",
+      "wardrobe" => "",
+      "lighting" => "",
+      "required_slots" => visual_slots(type)
+    }
+  end
+
+  defp visual_item(_collection, _type), do: %{"id" => generated_id("VIS")}
+
+  defp visual_collection_type(_payload, "objects", type) when type in ~w(character location prop),
+    do: type
+
+  defp visual_collection_type(payload, "variants:" <> object_id, _type) do
+    (payload["objects"] || [])
+    |> Enum.find(%{}, &(&1["id"] == object_id))
+    |> Map.get("type", "character")
+  end
+
+  defp visual_collection_type(_payload, _collection, _type), do: "character"
+
+  defp visual_slots(type) do
+    case Visuals.slot_template(type) do
+      {:ok, slots} -> slots
+      :error -> []
+    end
+  end
+
+  defp visual_type_label("character"), do: "角色"
+  defp visual_type_label("location"), do: "场景"
+  defp visual_type_label("prop"), do: "道具"
+  defp visual_type_label(_type), do: "对象"
 
   defp mutate_narrative_draft(socket, draft_id, mutation) do
     draft = Repo.get!(Draft, draft_id)

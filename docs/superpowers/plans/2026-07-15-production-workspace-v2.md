@@ -278,7 +278,7 @@ git commit -m "feat: build narrative production workspace"
 - VisualDesignEditor owns objects, type-specific fields, importance/reference flags, VisualVariants, constraints, and editable reference slots.
 - ReferenceMatrix groups candidates and primary selections by object/Variant/slot.
 
-- [ ] **Step 1: Write failing visual-proposal and form tests**
+- [x] **Step 1: Write failing visual-proposal and form tests**
 
 ```elixir
 test "confirming narrative produces a visual proposal with editable Variant cards", %{conn: conn, project: project} do
@@ -297,23 +297,23 @@ test "explicit reference_required survives normalization" do
 end
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `cd app; mix.bat test test/dramatizer/visuals_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: explicit reference flag is overwritten and the JSON visual form still appears.
 
-- [ ] **Step 3: Implement visual proposal and production matrix**
+- [x] **Step 3: Implement visual proposal and production matrix**
 
 Use StructuredTextProposal with confirmed Narrative authority. Render character/location/prop tabs, common and type-specific fields, provenance, VisualVariant cards, editable slot templates, exploration labels, upload, generate, compare, select, edit-child, and ReferenceSet confirmation readiness.
 
-- [ ] **Step 4: Run GREEN and reference workflow regressions**
+- [x] **Step 4: Run GREEN and reference workflow regressions**
 
 Run: `cd app; mix.bat test test/dramatizer/visuals_test.exs test/dramatizer/visuals/reference_workflow_test.exs test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/acceptance/assets_changes_test.exs`
 
 Expected: all selected tests pass and formal selections still require confirmed VisualDesign.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/lib/dramatizer/visuals.ex app/lib/dramatizer_web/live/components/visual_design_editor.ex app/lib/dramatizer_web/live/components/reference_matrix.ex app/lib/dramatizer_web/live/components/candidate_gallery.ex app/lib/dramatizer_web/live/project_workspace_live.ex app/test/dramatizer/visuals_test.exs app/test/dramatizer_web/live/project_workspace_live_test.exs
