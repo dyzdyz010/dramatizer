@@ -8,6 +8,7 @@ defmodule Dramatizer.Assets do
 
   def create_upload_intent(%Project{id: project_id}, attrs) do
     intent_id = Ecto.UUID.generate()
+    idempotency_key = Map.get(attrs, :idempotency_key, Ecto.UUID.generate())
 
     values =
       attrs
@@ -15,11 +16,16 @@ defmodule Dramatizer.Assets do
       |> Map.put(:id, intent_id)
       |> Map.put(:project_id, project_id)
       |> Map.put(:staging_path, Store.staging_relative(intent_id))
-      |> Map.put_new(:idempotency_key, Ecto.UUID.generate())
+      |> Map.put(:idempotency_key, idempotency_key)
 
     %UploadIntent{id: intent_id}
     |> UploadIntent.create_changeset(values)
-    |> Repo.insert()
+    |> Repo.insert(
+      on_conflict: :nothing,
+      conflict_target: [:project_id, :idempotency_key]
+    )
+
+    {:ok, Repo.get_by!(UploadIntent, project_id: project_id, idempotency_key: idempotency_key)}
   end
 
   def stage_bytes(%UploadIntent{id: id}, bytes) when is_binary(bytes) and byte_size(bytes) > 0 do

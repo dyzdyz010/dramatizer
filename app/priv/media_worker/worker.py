@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import io
 import json
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageDraw, UnidentifiedImageError
 from pypdf import PdfReader
 
 PROTOCOL_VERSION = 1
@@ -102,10 +104,52 @@ def extract_pdf_text(payload: dict[str, Any]) -> dict[str, Any]:
         raise WorkerError("invalid_pdf", str(error)) from error
 
 
+def generate_fake_image(payload: dict[str, Any]) -> dict[str, Any]:
+    width = int(payload.get("width", 540))
+    height = int(payload.get("height", 960))
+    seed = str(payload.get("seed", "fake"))
+
+    if width <= 0 or height <= 0 or width > 4096 or height > 4096:
+        raise WorkerError("invalid_dimensions", "Fake image dimensions are out of range")
+
+    digest = hashlib.sha256(seed.encode("utf-8")).digest()
+    background = tuple(32 + component % 160 for component in digest[:3])
+    accent = tuple(64 + component % 192 for component in digest[3:6])
+    image = Image.new("RGB", (width, height), background)
+    draw = ImageDraw.Draw(image)
+
+    margin = max(8, min(width, height) // 18)
+    draw.rounded_rectangle(
+        (margin, margin, width - margin, height - margin),
+        radius=max(6, margin // 2),
+        outline=accent,
+        width=max(2, margin // 5),
+    )
+
+    for index in range(3):
+        left = margin * 2 + index * max(1, (width - margin * 4) // 3)
+        top = height // 3 + digest[6 + index] % max(1, height // 6)
+        radius = max(6, min(width, height) // (12 + index * 2))
+        draw.ellipse((left - radius, top - radius, left + radius, top + radius), fill=accent)
+
+    draw.text((margin * 2, height - margin * 3), digest.hex()[:16], fill=(245, 245, 245))
+    output = io.BytesIO()
+    image.save(output, format="PNG", optimize=False, compress_level=6)
+    png = output.getvalue()
+
+    return {
+        "png_base64": base64.b64encode(png).decode("ascii"),
+        "width": width,
+        "height": height,
+        "format": "PNG",
+    }
+
+
 COMMANDS = {
     "probe_image": probe_image,
     "probe_video": probe_video,
     "extract_pdf_text": extract_pdf_text,
+    "generate_fake_image": generate_fake_image,
 }
 
 

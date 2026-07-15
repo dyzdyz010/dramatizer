@@ -190,12 +190,12 @@ Attempt: prepared -> submitted -> succeeded|failed|timed_out|unknown_remote_stat
   duplicate_callbacks: 0, out_of_order_callbacks: false, cost_micros: 0}
 ```
 
-- [ ] Test first that Fake emits deterministic portrait PNG candidates for one episode/scene/three shots through the production orchestration path, with two candidates per Shot and distinct logical candidate indexes.
-- [ ] Implement fault injection for delay, failure, timeout, duplicate/out-of-order callback, and synthetic cost without branching around snapshots/attempts/assets.
-- [ ] Test technical QC hard-blocking, non-blocking semantic fixture evidence, explicit selection only, one active decision per slot, and retention of unselected candidates.
-- [ ] Run a fail/resume matrix for every node and assert successful siblings/attempts/costs are not duplicated.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer/generation/fake_adapter_test.exs test/dramatizer/fake_vertical_slice_test.exs; Pop-Location`.
-- [ ] Commit: `feat: run fake generation through production contracts`.
+- [x] Test first that Fake emits deterministic portrait PNG candidates for one episode/scene/three shots through the production orchestration path, with two candidates per Shot and distinct logical candidate indexes.
+- [x] Implement fault injection for delay, failure, timeout, duplicate/out-of-order callback, and synthetic cost without branching around snapshots/attempts/assets.
+- [x] Test technical QC hard-blocking, non-blocking semantic fixture evidence, explicit selection only, one active decision per slot, and retention of unselected candidates.
+- [x] Run a fail/resume matrix for every node and assert successful siblings/attempts/costs are not duplicated.
+- [x] Verify: `Push-Location app; mix test test/dramatizer/generation/fake_adapter_test.exs test/dramatizer/fake_vertical_slice_test.exs; Pop-Location`.
+- [x] Commit: `feat: run fake generation through production contracts`.
 
 ### Task 6: Parse TXT, Markdown, and text-layer PDFs as immutable sources
 

@@ -22,10 +22,17 @@ defmodule Dramatizer.Costs do
     Repo.get_by!(Budget, project_id: project_id)
   end
 
-  def record_estimate(%Project{id: project_id}, amount_micros, idempotency_key, metadata)
+  def record_estimate(
+        %Project{id: project_id},
+        amount_micros,
+        idempotency_key,
+        metadata,
+        attempt_id \\ nil
+      )
       when is_integer(amount_micros) and amount_micros >= 0 do
     insert_entry(%{
       project_id: project_id,
+      attempt_id: attempt_id,
       entry_type: :estimate,
       amount_micros: amount_micros,
       idempotency_key: idempotency_key,
@@ -33,7 +40,7 @@ defmodule Dramatizer.Costs do
     })
   end
 
-  def reserve(%Project{id: project_id}, amount_micros, idempotency_key)
+  def reserve(%Project{id: project_id}, amount_micros, idempotency_key, attempt_id \\ nil)
       when is_integer(amount_micros) and amount_micros >= 0 do
     ensure_budget(project_id)
 
@@ -55,6 +62,7 @@ defmodule Dramatizer.Costs do
             %CostEntry{}
             |> CostEntry.create_changeset(%{
               project_id: project_id,
+              attempt_id: attempt_id,
               entry_type: :reservation,
               amount_micros: amount_micros,
               idempotency_key: idempotency_key,
