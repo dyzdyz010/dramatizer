@@ -1,0 +1,13 @@
+{
+  "kind": "reference_image",
+  "object_id": <%= Jason.encode!(object["id"]) %>,
+  "variant_id": <%= Jason.encode!(variant["id"]) %>,
+  "slot": <%= Jason.encode!(slot) %>,
+  "payload": {
+    "object": <%= Dramatizer.CanonicalJSON.encode(object) %>,
+    "variant": <%= Dramatizer.CanonicalJSON.encode(variant) %>,
+    "slot": <%= Jason.encode!(slot) %>,
+    "width": <%= profile["formal_width"] %>,
+    "height": <%= profile["formal_height"] %>
+  }
+}

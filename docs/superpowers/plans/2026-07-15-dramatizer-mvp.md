@@ -270,13 +270,13 @@ TokenEstimator.preflight(text, resolved_model, reserved_tokens)
 
 **Revision kinds:** `narrative`, `visual_design`, `reference_set`, `shot_plan`.
 
-- [ ] Test selecting an episode candidate materializes only its dependency closure into editable drafts and cannot make AI data authoritative before confirmation.
-- [ ] Test role/scene/prop variants and reference requirements: recurring characters always require confirmed slots; recurring/key locations/props require sets; one-off non-key items may remain textual.
-- [ ] Implement default character/location/prop slot templates and explicit primary `AssetVersion` per slot.
-- [ ] Test deterministic `ShotPlanRevision -> GenerationSpecRevision`: equal exact revision/profile/template/compiler/config inputs produce byte-identical canonical payload/hash; any exact input change changes the hash.
-- [ ] Freeze source, Narrative, VisualDesign, ReferenceSet, ShotPlan, ProductionProfile, prompt/compiler/template versions in compiled specs.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer/narrative_test.exs test/dramatizer/visuals_test.exs test/dramatizer/directing/compiler_test.exs; Pop-Location`.
-- [ ] Commit: `feat: compile confirmed revisions into generation specs`.
+- [x] Test selecting an episode candidate materializes only its dependency closure into editable drafts and cannot make AI data authoritative before confirmation.
+- [x] Test role/scene/prop variants and reference requirements: recurring characters always require confirmed slots; recurring/key locations/props require sets; one-off non-key items may remain textual.
+- [x] Implement default character/location/prop slot templates and explicit primary `AssetVersion` per slot.
+- [x] Test deterministic `ShotPlanRevision -> GenerationSpecRevision`: equal exact revision/profile/template/compiler/config inputs produce byte-identical canonical payload/hash; any exact input change changes the hash.
+- [x] Freeze source, Narrative, VisualDesign, ReferenceSet, ShotPlan, ProductionProfile, prompt/compiler/template versions in compiled specs.
+- [x] Verify: `Push-Location app; mix test test/dramatizer/narrative_test.exs test/dramatizer/visuals_test.exs test/dramatizer/directing/compiler_test.exs; Pop-Location`.
+- [x] Commit: `feat: compile confirmed revisions into generation specs`.
 
 ### Task 9: Add real image generation/editing and reference workflows
 

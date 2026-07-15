@@ -1,0 +1,12 @@
+{
+  "kind": "shot_keyframe",
+  "shot_id": <%= Jason.encode!(shot["id"]) %>,
+  "payload": {
+    "shot": <%= Dramatizer.CanonicalJSON.encode(shot) %>,
+    "width": <%= profile["formal_width"] %>,
+    "height": <%= profile["formal_height"] %>,
+    "aspect_width": <%= profile["aspect_width"] %>,
+    "aspect_height": <%= profile["aspect_height"] %>,
+    "dependencies": <%= Dramatizer.CanonicalJSON.encode(dependencies) %>
+  }
+}
