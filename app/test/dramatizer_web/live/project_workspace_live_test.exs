@@ -54,15 +54,26 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     end
   end
 
-  test "state vocabulary covers empty/loading/failed/ready/waiting-user/stale", %{
+  test "workspace uses non-color state labels in the stage rail and canvas", %{
     conn: conn,
     project: project
   } do
     {:ok, view, _html} = live(conn, "/projects/#{project.id}/runs")
+    assert has_element?(view, "aside[aria-label='制作阶段'] [data-stage-state='empty']")
+    assert has_element?(view, "main[data-workspace-canvas][data-state='empty']")
+    assert render(view) =~ "未开始"
+  end
 
-    for state <- ~w(empty loading failed ready waiting_user stale) do
-      assert has_element?(view, "#state-legend [data-state='#{state}']")
-    end
+  test "workspace shell exposes the rail, provider header, inspector, and next action", %{
+    conn: conn,
+    project: project
+  } do
+    {:ok, view, _html} = live(conn, "/projects/#{project.id}/source")
+    assert has_element?(view, "aside[aria-label='制作阶段']")
+    assert has_element?(view, "header [data-provider-mode]")
+    assert has_element?(view, "main[data-workspace-canvas]")
+    assert has_element?(view, "aside[data-inspector]")
+    assert has_element?(view, "[data-next-action]")
   end
 
   test "project settings expose editable profile, model overrides, appendices, and rename", %{

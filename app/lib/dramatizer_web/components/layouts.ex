@@ -35,6 +35,7 @@ defmodule DramatizerWeb.Layouts do
 
   def app(assigns) do
     ~H"""
+    <a href="#workspace-content" class="skip-link">跳到主要内容</a>
     <header class="app-bar">
       <.link navigate={~p"/"} class="brand-lockup" aria-label="Dramatizer 首页">
         <span class="brand-mark"><span></span><span></span><span></span></span>
@@ -49,7 +50,7 @@ defmodule DramatizerWeb.Layouts do
       </div>
     </header>
 
-    <main class="app-main">
+    <main class="app-main" id="workspace-content">
       {render_slot(@inner_block)}
     </main>
 

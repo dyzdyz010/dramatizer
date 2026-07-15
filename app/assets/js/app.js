@@ -47,10 +47,38 @@ document.addEventListener("drop", event => {
   if (zone) delete zone.dataset.dragging
 })
 
+const inspectorPreferenceKey = "dramatizer:inspector-collapsed"
+
+const restoreInspectorPreference = () => {
+  const layout = document.querySelector(".workspace-layout")
+  const toggle = layout?.querySelector("[data-inspector-toggle]")
+  if (!layout || !toggle) return
+
+  const collapsed = window.localStorage.getItem(inspectorPreferenceKey) === "true"
+  layout.classList.toggle("inspector-collapsed", collapsed)
+  toggle.setAttribute("aria-expanded", String(!collapsed))
+}
+
+document.addEventListener("click", event => {
+  const toggle = event.target.closest("[data-inspector-toggle]")
+  if (!toggle) return
+
+  const layout = toggle.closest(".workspace-layout")
+  const collapsed = !layout.classList.contains("inspector-collapsed")
+  layout.classList.toggle("inspector-collapsed", collapsed)
+  toggle.setAttribute("aria-expanded", String(!collapsed))
+  window.localStorage.setItem(inspectorPreferenceKey, String(collapsed))
+})
+
 // Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
+topbar.config({barColors: {0: "#ec6842"}, shadowColor: "rgba(23, 33, 31, .24)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
-window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+window.addEventListener("phx:page-loading-stop", _info => {
+  topbar.hide()
+  restoreInspectorPreference()
+})
+
+restoreInspectorPreference()
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

@@ -29,7 +29,7 @@ defmodule DramatizerWeb.ProjectIndexLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="index-shell">
-        <section class="hero-panel">
+        <section class="hero-panel" data-project-launcher>
           <div>
             <p class="eyebrow">AI DRAMA WORKBENCH</p>
             <h1>短剧制作台</h1>
@@ -50,6 +50,20 @@ defmodule DramatizerWeb.ProjectIndexLive do
             />
             <.button variant="primary">创建项目</.button>
           </.form>
+        </section>
+
+        <section class="workflow-promise" data-workflow-promise aria-labelledby="workflow-title">
+          <div class="workflow-promise__intro">
+            <p class="eyebrow">FROM SOURCE TO SCREEN</p>
+            <h2 id="workflow-title">不是黑盒生成，而是一条可确认的制作闭环</h2>
+            <p>AI 负责提议与扩写，你在每个权威节点审阅、编辑并冻结版本。</p>
+          </div>
+          <ol class="workflow-promise__steps">
+            <li><span>01</span><strong>整本理解</strong><small>原著与事实分析</small></li>
+            <li><span>02</span><strong>制作权威</strong><small>分集、角色与场景</small></li>
+            <li><span>03</span><strong>视觉导演</strong><small>参考图、镜头与 QC</small></li>
+            <li><span>04</span><strong>成片闭环</strong><small>时间线、字幕与导出</small></li>
+          </ol>
         </section>
 
         <section aria-labelledby="project-list-title" class="project-section">

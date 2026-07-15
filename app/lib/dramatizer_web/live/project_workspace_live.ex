@@ -1015,320 +1015,381 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           </div>
         </header>
 
-        <StageNav.stage_nav project={@project} current={@stage} states={@stage_states} />
+        <div class="workspace-layout">
+          <StageNav.stage_nav project={@project} current={@stage} states={@stage_states} />
 
-        <main class="workspace-main" data-stage={@stage} data-state={@state}>
-          <section class="stage-intro">
-            <div>
-              <p class="eyebrow">{stage_code(@stage)}</p>
-              <h2>{stage_title(@stage)}</h2>
-              <p>{stage_description(@stage)}</p>
-            </div>
-            <.state_badge state={@state} />
-          </section>
-
-          <section :if={@stage == :source} class="workspace-panel">
-            <div class="two-column">
+          <main
+            class="workspace-main"
+            data-workspace-canvas
+            data-stage={@stage}
+            data-state={@state}
+          >
+            <section class="stage-intro">
               <div>
-                <h3>导入小说全文</h3>
-                <p class="muted">支持 TXT、Markdown 与带文本层 PDF；整本一次进入解析器。</p>
-                <form
-                  id="source-upload-form"
-                  phx-change="validate-upload"
-                  phx-submit="import-source"
-                  class="upload-zone"
+                <p class="eyebrow">{stage_code(@stage)}</p>
+                <h2>{stage_title(@stage)}</h2>
+                <p>{stage_description(@stage)}</p>
+              </div>
+              <.state_badge state={@state} />
+            </section>
+
+            <section :if={@stage == :source} class="workspace-panel">
+              <div class="two-column">
+                <div>
+                  <h3>导入小说全文</h3>
+                  <p class="muted">支持 TXT、Markdown 与带文本层 PDF；整本一次进入解析器。</p>
+                  <form
+                    id="source-upload-form"
+                    phx-change="validate-upload"
+                    phx-submit="import-source"
+                    class="upload-zone"
+                  >
+                    <.live_file_input upload={@uploads.source} />
+                    <.icon name="hero-arrow-up-tray" class="size-8" />
+                    <strong>选择或拖入原著文件</strong>
+                    <span>单文件上限 100 MB</span>
+                    <div :for={entry <- @uploads.source.entries} class="upload-progress">
+                      <span>{entry.client_name}</span><progress value={entry.progress} max="100"></progress>
+                    </div>
+                    <button
+                      class="btn btn-primary"
+                      type="submit"
+                      disabled={upload_unready?(@uploads.source.entries)}
+                    >
+                      解析并落盘
+                    </button>
+                  </form>
+                </div>
+                <div>
+                  <h3>已解析来源</h3>
+                  <div :if={@source_revisions == []} class="empty-panel compact">等待导入第一份原著。</div>
+                  <article :for={revision <- @source_revisions} class="source-row">
+                    <div>
+                      <strong>{revision.original_filename}</strong>
+                      <p>已解析全文 · {revision.character_count} 字 · rev {revision.revision}</p>
+                    </div>
+                    <.state_badge state={:ready} />
+                  </article>
+                </div>
+              </div>
+            </section>
+
+            <section :if={@stage == :analysis} class="workspace-panel" data-human-gate>
+              <div class="panel-actions">
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  phx-click="start-analysis"
+                  disabled={@source_revisions == []}
                 >
-                  <.live_file_input upload={@uploads.source} />
-                  <.icon name="hero-arrow-up-tray" class="size-8" />
-                  <strong>选择或拖入原著文件</strong>
-                  <span>单文件上限 100 MB</span>
-                  <div :for={entry <- @uploads.source.entries} class="upload-progress">
+                  启动全文分析
+                </button>
+                <span>六节点 DAG · 结构化校验 · 最多两次修复</span>
+              </div>
+              <div class="dag-grid">
+                <article :for={node <- @nodes} class="dag-node">
+                  <span class="eyebrow">{node.node_key}</span>
+                  <h3>{node_label(node.node_key)}</h3>
+                  <.state_badge state={node_state(node.status)} />
+                  <p :if={node.error_code} class="error-copy">{node.error_code}</p>
+                  <button
+                    :if={node.status == :failed}
+                    type="button"
+                    class="btn btn-ghost"
+                    phx-click="retry-node"
+                    phx-value-id={node.id}
+                  >
+                    仅重试本节点
+                  </button>
+                </article>
+              </div>
+              <AnalysisReview.analysis_review snapshot={List.first(@analysis_snapshots)} />
+            </section>
+
+            <section :if={@stage == :episodes} class="workspace-panel" data-human-gate>
+              <div class="candidate-list">
+                <article :for={candidate <- @episode_candidates} class="episode-card">
+                  <div>
+                    <span class="eyebrow">{candidate["id"]}</span>
+                    <h3>{candidate["name"]}</h3>
+                    <p>{candidate["data"]["summary"] || "来自全文分析的候选集"}</p>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    phx-click="select-episode"
+                    phx-value-candidate-id={candidate["id"]}
+                  >
+                    选择并创建 Narrative
+                  </button>
+                </article>
+              </div>
+              <NarrativeEditor.narrative_editor
+                :for={draft <- drafts_for(@drafts, :narrative)}
+                draft={draft}
+              />
+              <div
+                :if={@episode_candidates == [] and drafts_for(@drafts, :narrative) == []}
+                class="empty-panel compact"
+              >
+                全文分析完成后，请在此明确选择一个分集候选。
+              </div>
+            </section>
+
+            <section :if={@stage == :visuals} class="workspace-panel" data-human-gate>
+              <VisualDesignEditor.visual_design_editor
+                :for={draft <- drafts_for(@drafts, :visual_design)}
+                draft={draft}
+              />
+              <div :if={drafts_for(@drafts, :visual_design) == []} class="empty-panel">
+                <h3>等待 Narrative 权威</h3>
+                <p>确认 Narrative 后，系统会自动调用 AI 生成角色、场景、道具和 Variant 提案。</p>
+              </div>
+              <div class="visual-tool-row">
+                <form
+                  id="media-upload-form"
+                  phx-change="validate-upload"
+                  phx-submit="import-media"
+                  class="upload-zone media-upload"
+                >
+                  <.live_file_input upload={@uploads.media} />
+                  <.icon name="hero-photo" class="size-8" />
+                  <strong>上传参考图</strong>
+                  <span>PNG、JPG、JPEG、WEBP</span>
+                  <div :for={entry <- @uploads.media.entries} class="upload-progress">
                     <span>{entry.client_name}</span><progress value={entry.progress} max="100"></progress>
                   </div>
                   <button
                     class="btn btn-primary"
                     type="submit"
-                    disabled={upload_unready?(@uploads.source.entries)}
+                    disabled={upload_unready?(@uploads.media.entries)}
                   >
-                    解析并落盘
+                    存入素材库
                   </button>
                 </form>
               </div>
-              <div>
-                <h3>已解析来源</h3>
-                <div :if={@source_revisions == []} class="empty-panel compact">等待导入第一份原著。</div>
-                <article :for={revision <- @source_revisions} class="source-row">
-                  <div>
-                    <strong>{revision.original_filename}</strong>
-                    <p>已解析全文 · {revision.character_count} 字 · rev {revision.revision}</p>
-                  </div>
-                  <.state_badge state={:ready} />
-                </article>
-              </div>
-            </div>
-          </section>
-
-          <section :if={@stage == :analysis} class="workspace-panel" data-human-gate>
-            <div class="panel-actions">
-              <button
-                type="button"
-                class="btn btn-primary"
-                phx-click="start-analysis"
-                disabled={@source_revisions == []}
-              >
-                启动全文分析
-              </button>
-              <span>六节点 DAG · 结构化校验 · 最多两次修复</span>
-            </div>
-            <div class="dag-grid">
-              <article :for={node <- @nodes} class="dag-node">
-                <span class="eyebrow">{node.node_key}</span>
-                <h3>{node_label(node.node_key)}</h3>
-                <.state_badge state={node_state(node.status)} />
-                <p :if={node.error_code} class="error-copy">{node.error_code}</p>
+              <div :if={@reference_slots != []} class="panel-actions production-actions">
                 <button
-                  :if={node.status == :failed}
+                  type="button"
+                  class="btn btn-primary"
+                  phx-click="generate-reference-candidates"
+                >
+                  AI 生成参考候选
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-soft"
+                  phx-click="create-reference-set-from-selections"
+                >
+                  从已选主图创建 ReferenceSet
+                </button>
+              </div>
+              <CandidateGallery.candidate_gallery
+                candidates={@reference_candidates}
+                upstream_path={~p"/projects/#{@project.id}/visuals"}
+              />
+              <ReferenceMatrix.reference_matrix
+                slots={@reference_slots}
+                candidates={@reference_candidates}
+                assets={@reference_assets}
+              />
+              <.reference_set_editor
+                :for={draft <- drafts_for(@drafts, :reference_set)}
+                draft={draft}
+              />
+            </section>
+
+            <section :if={@stage == :shots} class="workspace-panel" data-human-gate>
+              <ShotPlanEditor.shot_plan_editor
+                :for={draft <- drafts_for(@drafts, :shot_plan)}
+                draft={draft}
+              />
+              <div :if={drafts_for(@drafts, :shot_plan) == []} class="empty-panel">
+                <h3>等待 ReferenceSet 权威</h3>
+                <p>确认主参考图集合后，系统会自动生成完整导演提案。</p>
+              </div>
+              <div class="panel-actions production-actions">
+                <button type="button" class="btn btn-soft" phx-click="compile-shot-specs">
+                  编译冻结 GenerationSpec
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-primary"
+                  phx-click="generate-shot-candidates"
+                  disabled={Enum.all?(@specs, &(&1.kind != "shot_keyframe"))}
+                >
+                  生成候选并执行 QC
+                </button>
+              </div>
+              <GenerationSpecReview.generation_spec_review
+                revision={latest_revision(@revisions, :generation_spec)}
+                specs={@specs}
+              />
+              <CandidateGallery.candidate_gallery
+                candidates={@shot_candidates}
+                upstream_path={~p"/projects/#{@project.id}/shots"}
+              />
+              <div :for={stale <- @stale_records} class="stale-row recovery-card">
+                <div>
+                  <span class="eyebrow">STALE · {stale.subject_type}</span>
+                  <strong>{stale_label(stale.reason)}</strong>
+                  <p>{stale_guidance(stale.reason)}</p>
+                </div>
+                <button
+                  :if={stale.subject_type == "selection_decision"}
                   type="button"
                   class="btn btn-ghost"
-                  phx-click="retry-node"
-                  phx-value-id={node.id}
+                  phx-click="resolve-stale"
+                  phx-value-selection-id={stale.subject_id}
                 >
-                  仅重试本节点
+                  固定旧输入
                 </button>
-              </article>
-            </div>
-            <AnalysisReview.analysis_review snapshot={List.first(@analysis_snapshots)} />
-          </section>
+                <form
+                  :if={stale.subject_type == "selection_decision" and @shot_candidates != []}
+                  phx-submit="resolve-stale-replace"
+                  phx-value-selection-id={stale.subject_id}
+                  class="stale-replacement"
+                >
+                  <select name="replacement[asset_id]">
+                    <option :for={candidate <- @shot_candidates} value={candidate.asset.id}>
+                      {candidate.slot_key} · 候选 {candidate.index + 1}
+                    </option>
+                  </select>
+                  <button type="submit" class="btn btn-soft">替换为新候选</button>
+                </form>
+              </div>
+            </section>
 
-          <section :if={@stage == :episodes} class="workspace-panel" data-human-gate>
-            <div class="candidate-list">
-              <article :for={candidate <- @episode_candidates} class="episode-card">
+            <section :if={@stage == :timeline} class="workspace-panel" data-human-gate>
+              <TimelineEditor.timeline_editor
+                timeline={@timeline}
+                clips={@clips}
+                subtitles={@subtitles}
+                renders={@renders}
+                selections={shot_selections(@selections)}
+              />
+            </section>
+
+            <section :if={@stage == :runs} class="workspace-panel">
+              <ProjectSettings.project_settings
+                profile={@profile}
+                budget={@budget}
+                model_task_types={@model_task_types}
+                prompt_task_types={@prompt_task_types}
+              />
+              <div
+                :if={Application.fetch_env!(:dramatizer, :provider_mode) == :fake}
+                class="fake-controls"
+                data-human-gate
+              >
                 <div>
-                  <span class="eyebrow">{candidate["id"]}</span>
-                  <h3>{candidate["name"]}</h3>
-                  <p>{candidate["data"]["summary"] || "来自全文分析的候选集"}</p>
+                  <p class="eyebrow">OFFLINE RECOVERY CONTROL</p>
+                  <h3>Fake 故障与幂等烟测</h3>
+                  <p>首次提交失败；恢复时注入重复与乱序回调，验证只产生一个结果和一笔实际成本。</p>
+                </div>
+                <div>
+                  <button type="button" class="btn btn-soft" phx-click="inject-fake-failure">
+                    注入一次 Fake 失败
+                  </button>
+                  <button type="button" class="btn btn-primary" phx-click="resume-fake-failure">
+                    恢复并注入重复乱序回调
+                  </button>
+                </div>
+              </div>
+              <RunPanel.run_panel runs={@runs} attempts={@attempts} costs={@costs} />
+              <div :for={{old_revision, new_revision} <- @revision_pairs} class="trace-row">
+                <div>
+                  <strong>
+                    {kind_label(new_revision.kind)} rev {old_revision.revision} → {new_revision.revision}
+                  </strong>
+                  <p>先预览精确依赖影响，再创建 ChangeSet。</p>
                 </div>
                 <button
                   type="button"
-                  class="btn btn-primary"
-                  phx-click="select-episode"
-                  phx-value-candidate-id={candidate["id"]}
+                  class="btn btn-ghost"
+                  phx-click="preview-change"
+                  phx-value-old-id={old_revision.id}
+                  phx-value-new-id={new_revision.id}
                 >
-                  选择并创建 Narrative
+                  预览影响
                 </button>
-              </article>
-            </div>
-            <NarrativeEditor.narrative_editor
-              :for={draft <- drafts_for(@drafts, :narrative)}
-              draft={draft}
-            />
-            <div
-              :if={@episode_candidates == [] and drafts_for(@drafts, :narrative) == []}
-              class="empty-panel compact"
-            >
-              全文分析完成后，请在此明确选择一个分集候选。
-            </div>
-          </section>
-
-          <section :if={@stage == :visuals} class="workspace-panel" data-human-gate>
-            <VisualDesignEditor.visual_design_editor
-              :for={draft <- drafts_for(@drafts, :visual_design)}
-              draft={draft}
-            />
-            <div :if={drafts_for(@drafts, :visual_design) == []} class="empty-panel">
-              <h3>等待 Narrative 权威</h3>
-              <p>确认 Narrative 后，系统会自动调用 AI 生成角色、场景、道具和 Variant 提案。</p>
-            </div>
-            <div class="visual-tool-row">
-              <form
-                id="media-upload-form"
-                phx-change="validate-upload"
-                phx-submit="import-media"
-                class="upload-zone media-upload"
-              >
-                <.live_file_input upload={@uploads.media} />
-                <.icon name="hero-photo" class="size-8" />
-                <strong>上传参考图</strong>
-                <span>PNG、JPG、JPEG、WEBP</span>
-                <div :for={entry <- @uploads.media.entries} class="upload-progress">
-                  <span>{entry.client_name}</span><progress value={entry.progress} max="100"></progress>
+              </div>
+              <ChangeImpact.change_impact impact={@impact} />
+              <div :for={change <- @change_sets} class="trace-row">
+                <div>
+                  <strong>ChangeSet · epoch {change.graph_epoch}</strong>
+                  <p>{change.status} · {length(change.selected_target_ids)} 个目标</p>
                 </div>
                 <button
-                  class="btn btn-primary"
-                  type="submit"
-                  disabled={upload_unready?(@uploads.media.entries)}
+                  :if={change.status == :partial_failed}
+                  type="button"
+                  class="btn btn-ghost"
+                  phx-click="resume-change"
+                  phx-value-id={change.id}
                 >
-                  存入素材库
-                </button>
-              </form>
-            </div>
-            <div :if={@reference_slots != []} class="panel-actions production-actions">
-              <button type="button" class="btn btn-primary" phx-click="generate-reference-candidates">
-                AI 生成参考候选
-              </button>
-              <button
-                type="button"
-                class="btn btn-soft"
-                phx-click="create-reference-set-from-selections"
-              >
-                从已选主图创建 ReferenceSet
-              </button>
-            </div>
-            <CandidateGallery.candidate_gallery
-              candidates={@reference_candidates}
-              upstream_path={~p"/projects/#{@project.id}/visuals"}
-            />
-            <ReferenceMatrix.reference_matrix
-              slots={@reference_slots}
-              candidates={@reference_candidates}
-              assets={@reference_assets}
-            />
-            <.reference_set_editor
-              :for={draft <- drafts_for(@drafts, :reference_set)}
-              draft={draft}
-            />
-          </section>
-
-          <section :if={@stage == :shots} class="workspace-panel" data-human-gate>
-            <ShotPlanEditor.shot_plan_editor
-              :for={draft <- drafts_for(@drafts, :shot_plan)}
-              draft={draft}
-            />
-            <div :if={drafts_for(@drafts, :shot_plan) == []} class="empty-panel">
-              <h3>等待 ReferenceSet 权威</h3>
-              <p>确认主参考图集合后，系统会自动生成完整导演提案。</p>
-            </div>
-            <div class="panel-actions production-actions">
-              <button type="button" class="btn btn-soft" phx-click="compile-shot-specs">
-                编译冻结 GenerationSpec
-              </button>
-              <button
-                type="button"
-                class="btn btn-primary"
-                phx-click="generate-shot-candidates"
-                disabled={Enum.all?(@specs, &(&1.kind != "shot_keyframe"))}
-              >
-                生成候选并执行 QC
-              </button>
-            </div>
-            <GenerationSpecReview.generation_spec_review
-              revision={latest_revision(@revisions, :generation_spec)}
-              specs={@specs}
-            />
-            <CandidateGallery.candidate_gallery
-              candidates={@shot_candidates}
-              upstream_path={~p"/projects/#{@project.id}/shots"}
-            />
-            <div :for={stale <- @stale_records} class="stale-row recovery-card">
-              <div>
-                <span class="eyebrow">STALE · {stale.subject_type}</span>
-                <strong>{stale_label(stale.reason)}</strong>
-                <p>{stale_guidance(stale.reason)}</p>
-              </div>
-              <button
-                :if={stale.subject_type == "selection_decision"}
-                type="button"
-                class="btn btn-ghost"
-                phx-click="resolve-stale"
-                phx-value-selection-id={stale.subject_id}
-              >
-                固定旧输入
-              </button>
-              <form
-                :if={stale.subject_type == "selection_decision" and @shot_candidates != []}
-                phx-submit="resolve-stale-replace"
-                phx-value-selection-id={stale.subject_id}
-                class="stale-replacement"
-              >
-                <select name="replacement[asset_id]">
-                  <option :for={candidate <- @shot_candidates} value={candidate.asset.id}>
-                    {candidate.slot_key} · 候选 {candidate.index + 1}
-                  </option>
-                </select>
-                <button type="submit" class="btn btn-soft">替换为新候选</button>
-              </form>
-            </div>
-          </section>
-
-          <section :if={@stage == :timeline} class="workspace-panel" data-human-gate>
-            <TimelineEditor.timeline_editor
-              timeline={@timeline}
-              clips={@clips}
-              subtitles={@subtitles}
-              renders={@renders}
-              selections={shot_selections(@selections)}
-            />
-          </section>
-
-          <section :if={@stage == :runs} class="workspace-panel">
-            <ProjectSettings.project_settings
-              profile={@profile}
-              budget={@budget}
-              model_task_types={@model_task_types}
-              prompt_task_types={@prompt_task_types}
-            />
-            <div
-              :if={Application.fetch_env!(:dramatizer, :provider_mode) == :fake}
-              class="fake-controls"
-              data-human-gate
-            >
-              <div>
-                <p class="eyebrow">OFFLINE RECOVERY CONTROL</p>
-                <h3>Fake 故障与幂等烟测</h3>
-                <p>首次提交失败；恢复时注入重复与乱序回调，验证只产生一个结果和一笔实际成本。</p>
-              </div>
-              <div>
-                <button type="button" class="btn btn-soft" phx-click="inject-fake-failure">
-                  注入一次 Fake 失败
-                </button>
-                <button type="button" class="btn btn-primary" phx-click="resume-fake-failure">
-                  恢复并注入重复乱序回调
+                  恢复未完成节点
                 </button>
               </div>
-            </div>
-            <RunPanel.run_panel runs={@runs} attempts={@attempts} costs={@costs} />
-            <div :for={{old_revision, new_revision} <- @revision_pairs} class="trace-row">
-              <div>
-                <strong>
-                  {kind_label(new_revision.kind)} rev {old_revision.revision} → {new_revision.revision}
-                </strong>
-                <p>先预览精确依赖影响，再创建 ChangeSet。</p>
-              </div>
-              <button
-                type="button"
-                class="btn btn-ghost"
-                phx-click="preview-change"
-                phx-value-old-id={old_revision.id}
-                phx-value-new-id={new_revision.id}
-              >
-                预览影响
-              </button>
-            </div>
-            <ChangeImpact.change_impact impact={@impact} />
-            <div :for={change <- @change_sets} class="trace-row">
-              <div>
-                <strong>ChangeSet · epoch {change.graph_epoch}</strong>
-                <p>{change.status} · {length(change.selected_target_ids)} 个目标</p>
-              </div>
-              <button
-                :if={change.status == :partial_failed}
-                type="button"
-                class="btn btn-ghost"
-                phx-click="resume-change"
-                phx-value-id={change.id}
-              >
-                恢复未完成节点
-              </button>
-            </div>
-          </section>
+            </section>
 
-          <div id="state-legend" class="state-legend" aria-label="状态图例">
-            <.state_badge
-              :for={state <- [:empty, :loading, :failed, :ready, :waiting_user, :stale]}
-              state={state}
-            />
-          </div>
-        </main>
+            <nav class="next-action-bar" data-next-action aria-label="下一步">
+              <div>
+                <span class="eyebrow">NEXT ACTION</span>
+                <strong>{next_action_label(@stage)}</strong>
+              </div>
+              <.link navigate={stage_path(@project.id, next_stage(@stage))} class="btn btn-primary">
+                {next_action_button(@stage)} <span aria-hidden="true">→</span>
+              </.link>
+            </nav>
+          </main>
+
+          <aside class="workspace-inspector" data-inspector aria-label="制作上下文">
+            <div class="inspector-heading">
+              <div>
+                <span>CONTEXT</span>
+                <strong>制作上下文</strong>
+              </div>
+              <button
+                type="button"
+                class="inspector-toggle"
+                data-inspector-toggle
+                aria-label="收起或展开制作上下文"
+                aria-expanded="true"
+              >
+                <span aria-hidden="true">↔</span>
+              </button>
+            </div>
+            <dl class="inspector-facts">
+              <div>
+                <dt>当前阶段</dt>
+                <dd>{stage_title(@stage)}</dd>
+              </div>
+              <div>
+                <dt>阶段状态</dt>
+                <dd><.state_badge state={@state} /></dd>
+              </div>
+              <div>
+                <dt>来源版本</dt>
+                <dd>{length(@source_revisions)}</dd>
+              </div>
+              <div>
+                <dt>编辑草稿</dt>
+                <dd>{length(@drafts)}</dd>
+              </div>
+              <div>
+                <dt>冻结版本</dt>
+                <dd>{length(@revisions)}</dd>
+              </div>
+              <div>
+                <dt>模型尝试</dt>
+                <dd>{length(@attempts)}</dd>
+              </div>
+            </dl>
+            <p class="inspector-note">
+              表单保存 Draft；确认后生成不可变 Revision。上游变化会显式标记影响范围。
+            </p>
+          </aside>
+        </div>
       </div>
     </Layouts.app>
     """
@@ -2314,6 +2375,38 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp stage_description(:shots), do: "比较生成规格、逐维 QC、尝试与成本后，由人选择每个镜头。"
   defp stage_description(:timeline), do: "编辑镜头节奏与字幕；预览可变，正式导出依赖冻结版本。"
   defp stage_description(:runs), do: "检查每次执行的模型、错误、恢复动作和真实成本。"
+
+  defp next_stage(:source), do: :analysis
+  defp next_stage(:analysis), do: :episodes
+  defp next_stage(:episodes), do: :visuals
+  defp next_stage(:visuals), do: :shots
+  defp next_stage(:shots), do: :timeline
+  defp next_stage(:timeline), do: :runs
+  defp next_stage(:runs), do: :source
+
+  defp next_action_label(:source), do: "导入完成后，检查整本事实分析"
+  defp next_action_label(:analysis), do: "确认分析结果并选择分集候选"
+  defp next_action_label(:episodes), do: "冻结 Narrative，进入视觉权威"
+  defp next_action_label(:visuals), do: "确认主参考图，进入导演方案"
+  defp next_action_label(:shots), do: "选择镜头主图，组装时间线"
+  defp next_action_label(:timeline), do: "检查预览与正式导出记录"
+  defp next_action_label(:runs), do: "回到原著或继续检查运行恢复"
+
+  defp next_action_button(:source), do: "查看全文解析"
+  defp next_action_button(:analysis), do: "选择分集候选"
+  defp next_action_button(:episodes), do: "进入视觉设计"
+  defp next_action_button(:visuals), do: "进入镜头制作"
+  defp next_action_button(:shots), do: "进入时间线"
+  defp next_action_button(:timeline), do: "查看运行记录"
+  defp next_action_button(:runs), do: "返回原著"
+
+  defp stage_path(project_id, :source), do: ~p"/projects/#{project_id}/source"
+  defp stage_path(project_id, :analysis), do: ~p"/projects/#{project_id}/analysis"
+  defp stage_path(project_id, :episodes), do: ~p"/projects/#{project_id}/episodes"
+  defp stage_path(project_id, :visuals), do: ~p"/projects/#{project_id}/visuals"
+  defp stage_path(project_id, :shots), do: ~p"/projects/#{project_id}/shots"
+  defp stage_path(project_id, :timeline), do: ~p"/projects/#{project_id}/timeline"
+  defp stage_path(project_id, :runs), do: ~p"/projects/#{project_id}/runs"
 
   defp kind_label(:narrative), do: "Narrative"
   defp kind_label(:visual_design), do: "VisualDesign"

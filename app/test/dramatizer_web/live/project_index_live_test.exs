@@ -10,6 +10,8 @@ defmodule DramatizerWeb.ProjectIndexLiveTest do
     assert html =~ "短剧制作台"
     assert html =~ "还没有项目"
     refute html =~ "登录"
+    assert has_element?(view, "[data-project-launcher]")
+    assert has_element?(view, "[data-workflow-promise]")
 
     view
     |> form("#new-project-form", project: %{name: "雨夜来信"})

@@ -461,7 +461,7 @@ git commit -m "feat: productize review and timeline flows"
 - Desktop shell: top status bar, left stage rail, main canvas, optional right Inspector, sticky next-action bar.
 - JS hooks are limited to Inspector state, autosave debounce, and keyboard-accessible reordering; domain writes remain LiveView events.
 
-- [ ] **Step 1: Write failing structural/accessibility tests**
+- [x] **Step 1: Write failing structural/accessibility tests**
 
 ```elixir
 test "workspace uses a stage rail, provider header, main canvas, inspector, and next action", %{conn: conn, project: project} do
@@ -473,23 +473,23 @@ test "workspace uses a stage rail, provider header, main canvas, inspector, and 
 end
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `cd app; mix.bat test test/dramatizer_web/live/project_index_live_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: the old horizontal nav and page structure fail the new selectors.
 
-- [ ] **Step 3: Implement the visual system**
+- [x] **Step 3: Implement the visual system**
 
 Reduce display headings, use the warm-neutral/ink/orange/teal token set, add compact form grids, Authority/Draft/Candidate/Run/Alert card variants, responsive rail/Inspector behavior, visible focus, non-color status labels, keyboard reorder alternatives, loading-disabled buttons, and mobile single-column layouts. Remove the persistent state legend and development controls from OpenAI mode.
 
-- [ ] **Step 4: Build assets and run UI tests**
+- [x] **Step 4: Build assets and run UI tests**
 
 Run: `cd app; mix.bat format --check-formatted; mix.bat compile --warnings-as-errors; mix.bat assets.build; mix.bat test test/dramatizer_web/live/project_index_live_test.exs test/dramatizer_web/live/project_workspace_live_test.exs`
 
 Expected: format, compile, assets, and UI tests all pass without warnings.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/lib/dramatizer_web app/assets app/test/dramatizer_web
