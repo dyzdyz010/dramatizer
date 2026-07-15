@@ -301,12 +301,18 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
            ) == length(required_slots) * 4
 
     assert has_element?(visuals, ".candidate-card")
+    candidate_html = render(visuals)
+    assert candidate_html =~ "选择为主图"
+    assert candidate_html =~ "再次生成"
+    assert candidate_html =~ "基于此图编辑"
+    assert candidate_html =~ "返回上游修改"
+    assert candidate_html =~ "角色身份与 Variant"
 
     for slot <- required_slots do
       visuals
       |> element(
         "button[phx-click='select-candidate'][phx-value-slot-key='reference:#{slot}'][data-candidate-index='0']",
-        "选择此候选"
+        "选择为主图"
       )
       |> render_click()
     end
@@ -433,6 +439,10 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
 
     {:ok, timeline_view, _html} = live(conn, "/projects/#{project.id}/timeline")
     timeline_view |> element("button", "从已确认输入创建") |> render_click()
+    timeline_html = render(timeline_view)
+    assert timeline_html =~ "AAC 双声道静音占位"
+    assert has_element?(timeline_view, "[data-render-path='preview']")
+    assert has_element?(timeline_view, "[data-render-path='formal']")
     timeline = Repo.get_by!(Timeline, project_id: project.id)
     first_clip = Repo.one!(from clip in Clip, where: clip.timeline_id == ^timeline.id, limit: 1)
 

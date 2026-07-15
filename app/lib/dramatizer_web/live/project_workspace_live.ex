@@ -50,6 +50,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   alias DramatizerWeb.Live.Components.{
     AnalysisReview,
     CandidateGallery,
+    ChangeImpact,
     GenerationSpecReview,
     NarrativeEditor,
     ProjectSettings,
@@ -737,6 +738,22 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     end
   end
 
+  def handle_event(
+        "confirm-change",
+        %{"change" => %{"present" => "true"} = params},
+        %{assigns: %{impact: impact}} = socket
+      )
+      when not is_nil(impact) do
+    selected_ids = Map.get(params, "target_ids", [])
+    result = Changes.confirm(impact, selected_ids)
+
+    {:noreply,
+     socket
+     |> assign(:impact, nil)
+     |> result_flash(result, "ChangeSet 所选影响范围已确认。")
+     |> load_workspace()}
+  end
+
   def handle_event("confirm-change", _params, %{assigns: %{impact: impact}} = socket)
       when not is_nil(impact) do
     result = Changes.confirm(impact, :all)
@@ -764,9 +781,68 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     {:noreply, result_flash(socket, result, "候选已明确选中，历史选择仍保留。") |> load_workspace()}
   end
 
+  def handle_event(
+        "select-candidate-with-note",
+        %{
+          "asset-id" => asset_id,
+          "spec-id" => spec_id,
+          "slot-key" => slot_key,
+          "selection" => %{"note" => note}
+        },
+        socket
+      ) do
+    result =
+      Quality.select(
+        socket.assigns.project,
+        slot_key,
+        Repo.get!(GenerationSpec, spec_id),
+        Repo.get!(AssetVersion, asset_id),
+        note: String.trim(note)
+      )
+
+    {:noreply, result_flash(socket, result, "候选与验收备注已保存。") |> load_workspace()}
+  end
+
+  def handle_event("regenerate-candidate", %{"spec-id" => spec_id}, socket) do
+    parent = Repo.get!(GenerationSpec, spec_id)
+
+    next_index =
+      (Repo.one(
+         from spec in GenerationSpec,
+           where:
+             spec.project_id == ^parent.project_id and spec.kind == ^parent.kind and
+               spec.payload_hash == ^parent.payload_hash and spec.formal == ^parent.formal,
+           select: max(spec.candidate_index)
+       ) || -1) + 1
+
+    result =
+      with {:ok, spec} <-
+             Generation.create_spec(socket.assigns.project, %{
+               revision_id: parent.revision_id,
+               kind: parent.kind,
+               candidate_index: next_index,
+               formal: parent.formal,
+               payload: parent.payload
+             }),
+           {:ok, task_type} <- generation_task_type(parent.kind) do
+        Orchestrator.generate(spec, task_type, socket.assigns.project)
+      end
+
+    {:noreply, result_flash(socket, result, "新候选已生成并完成 QC。") |> load_workspace()}
+  end
+
   def handle_event("resolve-stale", %{"selection-id" => id}, socket) do
     result = id |> Repo.get!(SelectionDecision) |> Changes.resolve_stale(:pin_old_input)
     {:noreply, result_flash(socket, result, "已固定旧输入闭包。") |> load_workspace()}
+  end
+
+  def handle_event(
+        "resolve-stale-replace",
+        %{"selection-id" => id, "replacement" => %{"asset_id" => asset_id}},
+        socket
+      ) do
+    result = id |> Repo.get!(SelectionDecision) |> Changes.resolve_stale({:replace, asset_id})
+    {:noreply, result_flash(socket, result, "已用新候选替换过期主图。") |> load_workspace()}
   end
 
   def handle_event("resume-change", %{"id" => id}, socket) do
@@ -1098,7 +1174,10 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                 从已选主图创建 ReferenceSet
               </button>
             </div>
-            <CandidateGallery.candidate_gallery candidates={@reference_candidates} />
+            <CandidateGallery.candidate_gallery
+              candidates={@reference_candidates}
+              upstream_path={~p"/projects/#{@project.id}/visuals"}
+            />
             <ReferenceMatrix.reference_matrix
               slots={@reference_slots}
               candidates={@reference_candidates}
@@ -1136,13 +1215,18 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               revision={latest_revision(@revisions, :generation_spec)}
               specs={@specs}
             />
-            <CandidateGallery.candidate_gallery candidates={@shot_candidates} />
-            <div :for={stale <- @stale_records} class="stale-row">
+            <CandidateGallery.candidate_gallery
+              candidates={@shot_candidates}
+              upstream_path={~p"/projects/#{@project.id}/shots"}
+            />
+            <div :for={stale <- @stale_records} class="stale-row recovery-card">
               <div>
-                <strong>选择输入已过期</strong>
-                <p>{stale.reason}</p>
+                <span class="eyebrow">STALE · {stale.subject_type}</span>
+                <strong>{stale_label(stale.reason)}</strong>
+                <p>{stale_guidance(stale.reason)}</p>
               </div>
               <button
+                :if={stale.subject_type == "selection_decision"}
                 type="button"
                 class="btn btn-ghost"
                 phx-click="resolve-stale"
@@ -1150,6 +1234,19 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
               >
                 固定旧输入
               </button>
+              <form
+                :if={stale.subject_type == "selection_decision" and @shot_candidates != []}
+                phx-submit="resolve-stale-replace"
+                phx-value-selection-id={stale.subject_id}
+                class="stale-replacement"
+              >
+                <select name="replacement[asset_id]">
+                  <option :for={candidate <- @shot_candidates} value={candidate.asset.id}>
+                    {candidate.slot_key} · 候选 {candidate.index + 1}
+                  </option>
+                </select>
+                <button type="submit" class="btn btn-soft">替换为新候选</button>
+              </form>
             </div>
           </section>
 
@@ -1207,19 +1304,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                 预览影响
               </button>
             </div>
-            <article :if={@impact} class="impact-panel" data-human-gate>
-              <div>
-                <p class="eyebrow">CHANGESET PREVIEW · EPOCH {@impact.graph_epoch}</p>
-                <h3>确认影响范围</h3>
-                <p>{@impact.diff["kind"]} · {length(@impact.targets)} 个精确下游目标</p>
-              </div>
-              <ul>
-                <li :for={target <- @impact.targets}>{target.type} · {target.id}</li>
-              </ul>
-              <button type="button" class="btn btn-primary" phx-click="confirm-change">
-                确认全部列出的影响
-              </button>
-            </article>
+            <ChangeImpact.change_impact impact={@impact} />
             <div :for={change <- @change_sets} class="trace-row">
               <div>
                 <strong>ChangeSet · epoch {change.graph_epoch}</strong>
@@ -2101,6 +2186,15 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp human_error(:shot_selection_required), do: "时间线只能使用镜头候选，不能使用参考图。"
   defp human_error(reason), do: inspect(reason)
 
+  defp stale_label("old_input_in_flight"), do: "旧输入任务仍在 Provider 执行"
+  defp stale_label("upstream_revision_changed"), do: "上游权威已变化"
+  defp stale_label(reason), do: reason || "输入已过期"
+
+  defp stale_guidance("old_input_in_flight"),
+    do: "任务结果会保留在旧输入闭包下；完成后可固定旧输入或改选新候选。"
+
+  defp stale_guidance(_reason), do: "正式导出前必须明确固定旧输入或替换为新候选。"
+
   defp upload_unready?([]), do: true
   defp upload_unready?(entries), do: Enum.any?(entries, &(&1.progress < 100))
 
@@ -2156,6 +2250,11 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       if task == value, do: {:ok, String.to_existing_atom(task)}
     end)
   end
+
+  defp generation_task_type("reference_image"), do: {:ok, :reference_image}
+  defp generation_task_type("shot_keyframe"), do: {:ok, :shot_keyframe}
+  defp generation_task_type("image_edit"), do: {:ok, :image_edit}
+  defp generation_task_type(_kind), do: {:error, :unsupported_generation_task}
 
   defp parse_budget_micros(value, project) do
     case Decimal.parse(value) do

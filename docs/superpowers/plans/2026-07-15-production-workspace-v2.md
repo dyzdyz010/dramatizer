@@ -400,7 +400,7 @@ git commit -m "feat: build directing production workspace"
 - ChangeImpact renders exact affected objects and selectable range; no JSON diff.
 - TimelineEditor renders storyboards/tracks and keeps the existing Context commands.
 
-- [ ] **Step 1: Write failing UI contract tests**
+- [x] **Step 1: Write failing UI contract tests**
 
 ```elixir
 test "candidate review exposes four explicit actions and dimension evidence", %{conn: conn, project: project} do
@@ -422,23 +422,23 @@ test "timeline labels the silence track and separates preview from formal export
 end
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 Run: `cd app; mix.bat test test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/changes_test.exs test/dramatizer/timeline_test.exs`
 
 Expected: product labels, grouped evidence, and dual render-path elements are absent.
 
-- [ ] **Step 3: Implement review and recovery surfaces**
+- [x] **Step 3: Implement review and recovery surfaces**
 
 Keep all existing business commands, but replace raw IDs and generic rows with business summaries, exact-state chips, persistent error/recovery cards, stale resolution choices, ChangeSet tree/range controls, storyboard clips, duration-range markers, motion/transition Inspector, subtitle authority warning, preview player/downloads, and formal checklist.
 
-- [ ] **Step 4: Run GREEN and acceptance regressions**
+- [x] **Step 4: Run GREEN and acceptance regressions**
 
 Run: `cd app; mix.bat test test/dramatizer_web/live/project_workspace_live_test.exs test/dramatizer/changes_test.exs test/dramatizer/timeline_test.exs test/dramatizer/acceptance/timeline_restore_test.exs`
 
 Expected: all selected tests pass and unresolved stale still blocks formal only.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add app/lib/dramatizer_web/live/components app/lib/dramatizer_web/live/project_workspace_live.ex app/test/dramatizer_web/live/project_workspace_live_test.exs

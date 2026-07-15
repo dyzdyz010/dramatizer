@@ -9,7 +9,7 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
 
   def timeline_editor(assigns) do
     ~H"""
-    <section aria-labelledby="timeline-title">
+    <section class="timeline-editor" aria-labelledby="timeline-title">
       <div class="section-heading compact">
         <div>
           <p class="eyebrow">CUT & CAPTIONS</p>
@@ -26,13 +26,37 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
       </div>
 
       <div :if={@timeline} class="timeline-board">
+        <div class="timeline-tracks" aria-label="时间线轨道">
+          <div>
+            <span class="track-label">V1 · 画面</span><strong>{length(@clips)} 个 Storyboard 镜头</strong><small>主图与缺图占位共同组成可编辑画面轨</small>
+          </div>
+          <div>
+            <span class="track-label">A1 · 声音</span><strong>AAC 双声道静音占位</strong><small>首版只建立声音架构；后续 Suno 接口可替换而不改镜头权威</small>
+          </div>
+          <div>
+            <span class="track-label">T1 · 字幕</span><strong>{length(@subtitles)} 条 DialogueEvent 字幕</strong><small>字幕编辑是 Timeline 权威，不会回写 Narrative</small>
+          </div>
+        </div>
         <div class="clip-strip" role="list" aria-label="镜头时间线">
           <article :for={clip <- @clips} class="clip-card" role="listitem">
             <span class="clip-position">{clip.position}</span>
+            <div class="clip-storyboard">
+              <img
+                :if={clip.asset_version_id}
+                src={"/media/#{clip.asset_version_id}"}
+                alt={"#{clip.shot_id} 主图"}
+              />
+              <span :if={!clip.asset_version_id}>9:16<br />占位</span>
+            </div>
             <strong>{clip.shot_id}</strong>
             <span>{clip.duration_ms} ms</span>
             <span>{motion_label(clip.motion)}</span>
             <span :if={clip.placeholder} class="warning-chip">缺图占位</span>
+            <div class="duration-range" aria-label="允许时长范围">
+              <span>最短 {clip.minimum_duration_ms}</span>
+              <strong>建议 {clip.preferred_duration_ms}</strong>
+              <span>最长 {clip.maximum_duration_ms}</span>
+            </div>
             <div class="clip-actions">
               <button
                 type="button"
@@ -125,6 +149,11 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
           添加占位镜头
         </button>
 
+        <div class="subtitle-authority-note">
+          <strong>字幕权威边界</strong>
+          <span>这里的断句、时间与位置只属于剪辑版本，不会覆盖已确认的 Narrative 对白。</span>
+        </div>
+
         <div class="subtitle-list">
           <.form
             :for={cue <- @subtitles}
@@ -165,11 +194,33 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
           </.form>
         </div>
 
-        <div class="timeline-actions" data-human-gate>
-          <button type="button" class="btn btn-soft" phx-click="preview-timeline">生成预览</button>
-          <button type="button" class="btn btn-primary" phx-click="freeze-timeline">
-            冻结并正式导出
-          </button>
+        <div class="render-paths" data-human-gate>
+          <article class="render-path preview-path" data-render-path="preview">
+            <div>
+              <span class="eyebrow">PREVIEW PATH</span>
+              <h3>快速预览</h3>
+              <p>可反复生成；允许缺图占位与未解决的 stale，用于检查节奏和字幕。</p>
+            </div>
+            <ul>
+              <li>低分辨率预览规格</li>
+              <li>不冻结 TimelineVersion</li>
+              <li>可继续编辑</li>
+            </ul>
+            <button type="button" class="btn btn-soft" phx-click="preview-timeline">生成预览</button>
+          </article>
+          <article class="render-path formal-path" data-render-path="formal">
+            <div>
+              <span class="eyebrow">FORMAL PATH</span>
+              <h3>冻结并正式导出</h3>
+              <p>建立不可变 TimelineVersion；未解决 stale 会在此阻断。</p>
+            </div>
+            <ul>
+              <li>{selection_readiness(@clips)}</li>
+              <li>字幕时间与样式冻结</li>
+              <li>1080×1920 正式输出</li>
+            </ul>
+            <button type="button" class="btn btn-primary" phx-click="freeze-timeline">冻结并正式导出</button>
+          </article>
         </div>
 
         <div :if={@renders != []} class="render-list">
@@ -213,6 +264,11 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
   defp motion_label(:pan_down), do: "下移"
 
   defp motions, do: ~w(static push_in pull_out pan_left pan_right pan_up pan_down)
+
+  defp selection_readiness(clips) do
+    missing = Enum.count(clips, & &1.placeholder)
+    if missing == 0, do: "所有 Shot 已选择主图", else: "#{missing} 个 Shot 仍为占位"
+  end
 
   defp render_state(:rendered), do: :ready
   defp render_state(:failed), do: :failed
