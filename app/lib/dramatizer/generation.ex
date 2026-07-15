@@ -10,12 +10,13 @@ defmodule Dramatizer.Generation do
 
   @secret_key ~r/(authorization|api[-_]?key|access[-_]?token|secret|password)/i
   @allowed_transitions %{
-    prepared: [:submitted, :failed, :timed_out],
+    prepared: [:submitted, :failed, :timed_out, :superseded],
     submitted: [:succeeded, :failed, :timed_out, :unknown_remote_state],
     unknown_remote_state: [:succeeded, :failed],
     succeeded: [],
     failed: [],
-    timed_out: []
+    timed_out: [],
+    superseded: []
   }
 
   def create_spec(%Project{id: project_id}, attrs) do
@@ -131,7 +132,7 @@ defmodule Dramatizer.Generation do
             :submitted ->
               %{status: target, submitted_at: now}
 
-            status when status in [:succeeded, :failed, :timed_out] ->
+            status when status in [:succeeded, :failed, :timed_out, :superseded] ->
               %{status: target, completed_at: now}
 
             _ ->

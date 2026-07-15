@@ -4,7 +4,15 @@ defmodule Dramatizer.Generation.Attempt do
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
-  @statuses [:prepared, :submitted, :succeeded, :failed, :timed_out, :unknown_remote_state]
+  @statuses [
+    :prepared,
+    :submitted,
+    :succeeded,
+    :failed,
+    :timed_out,
+    :unknown_remote_state,
+    :superseded
+  ]
   @type t :: %__MODULE__{}
 
   schema "attempts" do

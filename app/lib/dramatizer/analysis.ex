@@ -186,6 +186,7 @@ defmodule Dramatizer.Analysis do
   end
 
   defp stringify(value) when is_list(value), do: Enum.map(value, &stringify/1)
+  defp stringify(value) when value in [true, false, nil], do: value
   defp stringify(value) when is_atom(value), do: Atom.to_string(value)
   defp stringify(value), do: value
 end

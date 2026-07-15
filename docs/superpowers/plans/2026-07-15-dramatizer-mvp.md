@@ -347,13 +347,13 @@ Changes.resume(change_set)
 Changes.resolve_stale(selection, :pin_old_input | {:replace, asset_id})
 ```
 
-- [ ] Test exact dependency traversal marks only affected specs/candidates/QC/selections and preserves historical decisions/assets.
-- [ ] Test preview has no side effects; confirmation freezes diff/graph epoch/actions; only deterministic recompile runs automatically; no Adapter call is enqueued.
-- [ ] Test unsubmitted old work is cancelled/superseded, submitted Attempts reconcile under old input and become stale, and old terminal results cannot overwrite newer work.
-- [ ] Test partial success/resume idempotency and no repeated successful calculation/cost.
-- [ ] Test changing a selected shot schedules debounced semantic QC for only that shot and direct neighbors.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer/changes_test.exs; Pop-Location`.
-- [ ] Commit: `feat: propagate revision changes without hidden regeneration`.
+- [x] Test exact dependency traversal marks only affected specs/candidates/QC/selections and preserves historical decisions/assets.
+- [x] Test preview has no side effects; confirmation freezes diff/graph epoch/actions; only deterministic recompile runs automatically; no Adapter call is enqueued.
+- [x] Test unsubmitted old work is cancelled/superseded, submitted Attempts reconcile under old input and become stale, and old terminal results cannot overwrite newer work.
+- [x] Test partial success/resume idempotency and no repeated successful calculation/cost.
+- [x] Test changing a selected shot schedules debounced semantic QC for only that shot and direct neighbors.
+- [x] Verify: `Push-Location app; mix test test/dramatizer/changes_test.exs; Pop-Location`.
+- [x] Commit: `feat: propagate revision changes without hidden regeneration`.
 
 ### Task 12: Build Timeline, subtitles, motion, Preview, and formal FFmpeg export
 
