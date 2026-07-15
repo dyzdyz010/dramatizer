@@ -371,14 +371,14 @@ Changes.resolve_stale(selection, :pin_old_input | {:replace, asset_id})
 - Test: `app/test/dramatizer/timeline/render_recipe_test.exs`
 - Integration: `app/test/dramatizer/timeline/render_integration_test.exs`
 
-- [ ] Test Timeline Draft assembly in ShotPlan order, placeholder clips for missing images, reordering/replacing/adding/removing, duration snap/warning, static/push-in/pull-out/four pan presets, hard cut, and bounded cross-dissolve.
-- [ ] Generate sentence-level Chinese SubtitleCue drafts from exact Narrative dialogue events; editing text does not mutate Narrative; freeze exact text/timing/style/source in TimelineVersion.
-- [ ] Generate deterministic UTF-8 SRT and a canonical RenderInputManifest/recipe hash; unresolved stale blocks formal freeze/export but not preview, while explicit pin-old retains exact old closure.
-- [ ] Implement FFmpeg rendering: image loop/scale/crop and limited motion, transition timing, subtitle safe-area burn-in, H.264 yuv420p video, full-duration AAC stereo silence, faststart MP4, and SRT sidecar finalized as AssetVersions.
-- [ ] Preview derives profile resolution (default 540x960); formal derives frozen profile (default 1080x1920). Preview is cacheable and cannot be used as the formal asset.
-- [ ] Probe the output and assert decode, resolution, aspect, duration tolerance, H.264 video, AAC stereo audio, silence, and subtitle presence; finalize formal output then run export technical QC.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer/timeline_test.exs test/dramatizer/timeline/render_recipe_test.exs test/dramatizer/timeline/render_integration_test.exs; Pop-Location`.
-- [ ] Commit: `feat: render subtitle animatics with silent audio`.
+- [x] Test Timeline Draft assembly in ShotPlan order, placeholder clips for missing images, reordering/replacing/adding/removing, duration snap/warning, static/push-in/pull-out/four pan presets, hard cut, and bounded cross-dissolve.
+- [x] Generate sentence-level Chinese SubtitleCue drafts from exact Narrative dialogue events; editing text does not mutate Narrative; freeze exact text/timing/style/source in TimelineVersion.
+- [x] Generate deterministic UTF-8 SRT and a canonical RenderInputManifest/recipe hash; unresolved stale blocks formal freeze/export but not preview, while explicit pin-old retains exact old closure.
+- [x] Implement FFmpeg rendering: image loop/scale/crop and limited motion, transition timing, subtitle safe-area burn-in, H.264 yuv420p video, full-duration AAC stereo silence, faststart MP4, and SRT sidecar finalized as AssetVersions.
+- [x] Preview derives profile resolution (default 540x960); formal derives frozen profile (default 1080x1920). Preview is cacheable and cannot be used as the formal asset.
+- [x] Probe the output and assert decode, resolution, aspect, duration tolerance, H.264 video, AAC stereo audio, silence, and subtitle presence; finalize formal output then run export technical QC.
+- [x] Verify: `Push-Location app; mix test test/dramatizer/timeline_test.exs test/dramatizer/timeline/render_recipe_test.exs test/dramatizer/timeline/render_integration_test.exs; Pop-Location`.
+- [x] Commit: `feat: render subtitle animatics with silent audio`.
 
 ### Task 13: Deliver the guided LiveView project workspace
 

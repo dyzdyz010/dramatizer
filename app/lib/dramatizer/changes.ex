@@ -295,7 +295,9 @@ defmodule Dramatizer.Changes do
 
   def schedule_neighbor_qc(%Project{id: project_id}, ordered_slots, changed_slot) do
     with index when is_integer(index) <- Enum.find_index(ordered_slots, &(&1 == changed_slot)) do
-      target_slots = Enum.slice(ordered_slots, max(0, index - 1), min(3, length(ordered_slots)))
+      start_index = max(0, index - 1)
+      end_index = min(length(ordered_slots) - 1, index + 1)
+      target_slots = Enum.slice(ordered_slots, start_index, end_index - start_index + 1)
 
       selections =
         Repo.all(

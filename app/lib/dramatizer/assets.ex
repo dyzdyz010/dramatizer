@@ -119,6 +119,15 @@ defmodule Dramatizer.Assets do
   end
 
   defp probe("image/" <> _rest, path), do: Worker.run(:probe_image, %{"path" => path})
+
+  defp probe("video/" <> _rest, path) do
+    Worker.run(:probe_video, %{
+      "path" => path,
+      "ffmpeg_path" => Application.fetch_env!(:dramatizer, :ffmpeg_path),
+      "ffprobe_path" => Application.fetch_env!(:dramatizer, :ffprobe_path)
+    })
+  end
+
   defp probe(_mime, _path), do: {:ok, %{}}
 
   defp persist_finalize(intent, lineage, probe, final_relative) do
@@ -145,6 +154,7 @@ defmodule Dramatizer.Assets do
             byte_size: intent.byte_size,
             width: probe["width"],
             height: probe["height"],
+            duration_ms: probe["duration_ms"],
             metadata: probe,
             lineage: lineage
           })
