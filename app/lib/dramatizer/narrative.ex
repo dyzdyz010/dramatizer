@@ -22,15 +22,20 @@ defmodule Dramatizer.Narrative do
           |> Enum.map(&Map.fetch!(by_id, &1))
           |> Enum.sort_by(& &1["id"])
 
-        Revisions.create_draft(
-          project,
-          :narrative,
-          %{
+        payload =
+          episode
+          |> Map.get("data", %{})
+          |> Map.merge(%{
             "episode" => episode,
             "dependencies" => dependencies,
             "analysis_snapshot_id" => snapshot.id,
             "source_revision_ids" => snapshot.source_revision_ids
-          },
+          })
+
+        Revisions.create_draft(
+          project,
+          :narrative,
+          payload,
           %{
             "origin" => "analysis_episode_candidate",
             "analysis_snapshot_id" => snapshot.id,

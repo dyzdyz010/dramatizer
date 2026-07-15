@@ -35,4 +35,10 @@ defmodule Dramatizer.Workflow.WorkflowRun do
     ])
     |> unique_constraint([:project_id, :definition_key, :idempotency_key])
   end
+
+  def status_changeset(run, attrs) do
+    run
+    |> cast(attrs, [:status, :started_at, :completed_at])
+    |> validate_required([:status])
+  end
 end

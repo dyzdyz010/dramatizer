@@ -1,8 +1,8 @@
-defmodule DramatizerWeb.PageControllerTest do
+defmodule DramatizerWeb.HomeRouteTest do
   use DramatizerWeb.ConnCase
 
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")
-    assert html_response(conn, 200) =~ "Peace of mind from prototype to production"
+    assert html_response(conn, 200) =~ "短剧制作台"
   end
 end

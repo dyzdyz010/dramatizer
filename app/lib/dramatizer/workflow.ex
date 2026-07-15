@@ -179,6 +179,19 @@ defmodule Dramatizer.Workflow do
 
   def get_node!(id), do: Repo.get!(NodeRun, id)
 
+  def mark_run(%WorkflowRun{} = run, status)
+      when status in [:running, :succeeded, :failed, :cancelled, :superseded] do
+    now = DateTime.utc_now()
+
+    attrs =
+      case status do
+        :running -> %{status: status, started_at: run.started_at || now}
+        _ -> %{status: status, completed_at: now}
+      end
+
+    run |> WorkflowRun.status_changeset(attrs) |> Repo.update()
+  end
+
   defp transition_values(node, target, attrs) do
     now = DateTime.utc_now()
 

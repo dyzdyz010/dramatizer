@@ -31,6 +31,26 @@ defmodule DramatizerWeb.CoreComponents do
 
   alias Phoenix.LiveView.JS
 
+  @doc "Renders the shared production-state vocabulary."
+  attr :state, :atom, values: [:empty, :loading, :failed, :ready, :waiting_user, :stale]
+  attr :label, :string, default: nil
+
+  def state_badge(assigns) do
+    ~H"""
+    <span class={["state-badge", "state-#{@state}"]} data-state={@state}>
+      <span class="state-badge__dot"></span>
+      {@label || state_label(@state)}
+    </span>
+    """
+  end
+
+  defp state_label(:empty), do: "未开始"
+  defp state_label(:loading), do: "进行中"
+  defp state_label(:failed), do: "失败"
+  defp state_label(:ready), do: "已就绪"
+  defp state_label(:waiting_user), do: "待确认"
+  defp state_label(:stale), do: "已过期"
+
   @doc """
   Renders flash notices.
 

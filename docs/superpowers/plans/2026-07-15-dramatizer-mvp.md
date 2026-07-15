@@ -410,13 +410,13 @@ Changes.resolve_stale(selection, :pin_old_input | {:replace, asset_id})
 /projects/:id/runs        Runs, attempts, errors, costs, and resume
 ```
 
-- [ ] Write LiveView tests first for project create/open/archive and every stage route with empty/loading/failed/ready/waiting-user/stale states.
-- [ ] Implement direct-to-server LiveView uploads for `.txt,.md,.markdown,.pdf,.png,.jpg,.jpeg,.webp`; consume into Source/Asset commands rather than a UI-only path.
-- [ ] Implement all human gates: select episode, edit/confirm typed drafts, select reference/shot assets, confirm ChangeSet, resolve stale, edit/freeze Timeline, preview, and formal export.
-- [ ] Provide candidate comparison cards with Spec summary, reference thumbnails, per-dimension QC, cost/attempt trace, no default selection, and explicit user action.
-- [ ] Implement Chinese stage-oriented visual design with responsive 9:16 media panels, persistent project context, accessible labels/focus, and no login surface.
-- [ ] Verify: `Push-Location app; mix test test/dramatizer_web/live; mix assets.build; Pop-Location`.
-- [ ] Commit: `feat: add guided LiveView production workspace`.
+- [x] Write LiveView tests first for project create/open/archive and every stage route with empty/loading/failed/ready/waiting-user/stale states.
+- [x] Implement direct-to-server LiveView uploads for `.txt,.md,.markdown,.pdf,.png,.jpg,.jpeg,.webp`; consume into Source/Asset commands rather than a UI-only path.
+- [x] Implement all human gates: select episode, edit/confirm typed drafts, select reference/shot assets, confirm ChangeSet, resolve stale, edit/freeze Timeline, preview, and formal export.
+- [x] Provide candidate comparison cards with Spec summary, reference thumbnails, per-dimension QC, cost/attempt trace, no default selection, and explicit user action.
+- [x] Implement Chinese stage-oriented visual design with responsive 9:16 media panels, persistent project context, accessible labels/focus, and no login surface.
+- [x] Verify: `Push-Location app; mix test test/dramatizer_web/live; mix assets.build; Pop-Location`.
+- [x] Commit: `feat: add guided LiveView production workspace`.
 
 ### Task 14: Add backup/restore, consistency checks, and operational runbooks
 

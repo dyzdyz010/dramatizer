@@ -32,6 +32,21 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {...colocatedHooks},
 })
 
+document.addEventListener("dragover", event => {
+  const zone = event.target.closest(".upload-zone")
+  if (zone) zone.dataset.dragging = "true"
+})
+
+document.addEventListener("dragleave", event => {
+  const zone = event.target.closest(".upload-zone")
+  if (zone) delete zone.dataset.dragging
+})
+
+document.addEventListener("drop", event => {
+  const zone = event.target.closest(".upload-zone")
+  if (zone) delete zone.dataset.dragging
+})
+
 // Show progress bar on live navigation and form submits
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))

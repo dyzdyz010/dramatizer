@@ -17,7 +17,15 @@ defmodule DramatizerWeb.Router do
   scope "/", DramatizerWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", ProjectIndexLive, :index
+    live "/projects/:id/source", ProjectWorkspaceLive, :source
+    live "/projects/:id/analysis", ProjectWorkspaceLive, :analysis
+    live "/projects/:id/episodes", ProjectWorkspaceLive, :episodes
+    live "/projects/:id/visuals", ProjectWorkspaceLive, :visuals
+    live "/projects/:id/shots", ProjectWorkspaceLive, :shots
+    live "/projects/:id/timeline", ProjectWorkspaceLive, :timeline
+    live "/projects/:id/runs", ProjectWorkspaceLive, :runs
+    get "/media/:id", AssetController, :show
   end
 
   # Other scopes may use custom stacks.
