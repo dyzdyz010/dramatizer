@@ -512,7 +512,7 @@ git commit -m "feat: redesign the production workspace"
 - Forced real smoke creates a fresh Project and exercises analysis plus all three text Proposal tasks, image prompt generation, Images, QC, Timeline, and formal export.
 - Persistent dev launch reports provider mode and refuses silent Fake fallback when OpenAI is explicitly configured.
 
-- [ ] **Step 1: Update E2E and real-smoke assertions before compatibility fixes**
+- [x] **Step 1: Update E2E and real-smoke assertions before compatibility fixes**
 
 ```typescript
 await expect(page.getByText('OpenAI 已启用').or(page.getByText('Fake 模拟模式'))).toBeVisible();
@@ -524,17 +524,17 @@ await expect(page.getByText('连续性')).toBeVisible();
 
 The real-provider acceptance test asserts persisted RequestSnapshots for `narrative_proposal`, `visual_design_proposal`, and `directing_proposal` in addition to the existing 33-call chain.
 
-- [ ] **Step 2: Run RED on browser and real-smoke selection**
+- [x] **Step 2: Run RED on browser and real-smoke selection**
 
 Run: `./scripts/e2e.ps1`
 
 Expected: old selectors/workflow fail until the new E2E is aligned with the completed form flow. Do not run paid real smoke until all local gates are green.
 
-- [ ] **Step 3: Fix compatibility and documentation**
+- [x] **Step 3: Fix compatibility and documentation**
 
 Ensure legacy current Project Drafts render through adapters without data loss, update scripts and docs with explicit provider behavior, and record the new UI/Proposal evidence in STATUS. Set the gitignored root `.env` to `DRAMATIZER_PROVIDER=openai` without printing the key.
 
-- [ ] **Step 4: Run complete fresh verification**
+- [x] **Step 4: Run complete fresh verification**
 
 Run in order:
 
@@ -552,11 +552,11 @@ cd ..
 
 Expected: format/compile/assets exit 0; ExUnit reports zero failures with only the explicit real-provider exclusion in the ordinary suite; contract validator passes all schemas/examples/negative cases/links; Playwright completes the form-driven Fake workflow; forced OpenAI smoke completes all Proposal, image, QC, Timeline, and formal export assertions.
 
-- [ ] **Step 5: Restart persistent service and browser-smoke user data path**
+- [x] **Step 5: Restart persistent service and browser-smoke user data path**
 
 Stop only the PIDs recorded for the existing Dramatizer supervisor/server, restart `scripts/dev.ps1` with the root `.env`, verify HTTP 200 and an OpenAI provider chip, upload a fresh Unicode text PDF through the browser, and confirm it reaches an AnalysisSnapshot without deleting the user's `test` Project.
 
-- [ ] **Step 6: Secret/diff/publish gate and commit**
+- [x] **Step 6: Secret/diff/publish gate and commit**
 
 ```powershell
 git diff --check

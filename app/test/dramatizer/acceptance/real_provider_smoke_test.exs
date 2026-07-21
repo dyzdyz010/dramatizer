@@ -9,8 +9,18 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
   alias Dramatizer.Directing
   alias Dramatizer.Directing.Compiler
   alias Dramatizer.Generation
-  alias Dramatizer.Generation.{Attempt, GenerationSpec, Orchestrator, ProviderRequestSnapshot}
+
+  alias Dramatizer.Generation.{
+    Attempt,
+    ConfigResolver,
+    GenerationSpec,
+    Orchestrator,
+    ProviderRequestSnapshot,
+    StructuredTextProposal
+  }
+
   alias Dramatizer.Media.Worker
+  alias Dramatizer.Narrative
   alias Dramatizer.Projects
   alias Dramatizer.Quality
   alias Dramatizer.Quality.QualityReport
@@ -70,6 +80,19 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
                }
              })
 
+    prompt_submitter = fn snapshot, _attempt ->
+      assert snapshot.adapter == "openai_responses"
+      assert snapshot.task_type == "image_prompt"
+
+      {:ok,
+       %{
+         output: %{"provider_prompt" => "Cinematic rainy-night station portrait of Lin Xia"},
+         request_id: "prompt_contract_001",
+         external_request_id: "prompt_contract_001",
+         usage: %{"total_tokens" => 9}
+       }}
+    end
+
     image_submitter = fn snapshot, _attempt ->
       assert snapshot.adapter == "openai_images"
       assert snapshot.model == "gpt-image-2"
@@ -117,6 +140,7 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
                    "size" => "270x480"
                  }
                },
+               prompt_submitter: prompt_submitter,
                image_submitter: image_submitter,
                semantic_evaluator: semantic_evaluator
              )
@@ -180,63 +204,94 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
 
     assert length(nodes) == 6
     assert Enum.all?(nodes, &(&1.status == :succeeded))
-    episode_items = get_in(analysis.node_results, ["episode_candidates", "output", "items"])
-    assert is_list(episode_items) and episode_items != []
+
+    episode_items =
+      analysis.node_results
+      |> get_in(["episode_candidates", "output", "items"])
+      |> List.wrap()
+      |> Enum.filter(&(&1["kind"] == "episode"))
+
+    assert episode_items != []
     episode = hd(episode_items)
 
-    narrative =
-      confirmed(project, :narrative, %{
-        "episode_id" => episode["id"],
-        "title" => episode["name"],
-        "analysis_snapshot_id" => analysis.id,
-        "source_revision_ids" => [source.id],
-        "dialogue_events" => [
-          dialogue("D001", "S001", "雨下得更急了。", 100, 1_050),
-          dialogue("D002", "S002", "这封信没有署名。", 1_150, 2_150),
-          dialogue("D003", "S003", "寄信的人还在附近。", 2_250, 3_350)
-        ]
-      })
+    assert {:ok, narrative_authority} = Narrative.proposal_authority(analysis, episode["id"])
+
+    assert {:ok, narrative_proposal} =
+             StructuredTextProposal.propose(project, :narrative_proposal, narrative_authority,
+               provider_mode: :openai
+             )
+
+    assert narrative_proposal.request_snapshot.task_type == "narrative_proposal"
+    assert narrative_proposal.attempt.status == :succeeded
+
+    assert {:ok, narrative_draft} =
+             Narrative.create_proposal_draft(
+               project,
+               analysis,
+               episode["id"],
+               narrative_proposal.output
+             )
+
+    assert {:ok, narrative} = Revisions.confirm_draft(narrative_draft.id)
+    assert narrative.payload["source_revision_ids"] == [source.id]
+
+    assert {:ok, visual_authority} = Visuals.proposal_authority(narrative)
+
+    assert {:ok, visual_proposal} =
+             StructuredTextProposal.propose(project, :visual_design_proposal, visual_authority,
+               provider_mode: :openai
+             )
+
+    assert visual_proposal.request_snapshot.task_type == "visual_design_proposal"
+    assert visual_proposal.attempt.status == :succeeded
 
     assert {:ok, visual_draft} =
-             Visuals.create_design_draft(project, narrative, [
-               %{
-                 "id" => "character:linxia",
-                 "type" => "character",
-                 "name" => "林夏",
-                 "recurring" => true,
-                 "key" => true,
-                 "variants" => [%{"id" => "raincoat"}]
-               }
-             ])
+             Visuals.create_proposal_draft(project, narrative, visual_proposal.output)
 
-    assert {:ok, visual} = Revisions.confirm_draft(visual_draft.id)
+    objects_by_type = Enum.group_by(visual_draft.payload["objects"] || [], & &1["type"])
 
-    required_slots =
-      get_in(visual.payload, ["objects", Access.at(0), "variants", Access.at(0), "required_slots"])
+    slot_template = %{
+      "character" => ~w(face_closeup three_quarter_full expression_features),
+      "location" => ~w(spatial_wide primary_direction key_lighting),
+      "prop" => ~w(overall key_detail_state)
+    }
 
-    assert length(required_slots) == 3
+    bounded_objects =
+      ~w(character location prop)
+      |> Enum.flat_map(fn type -> objects_by_type |> Map.get(type, []) |> Enum.take(1) end)
+      |> Enum.map(fn object ->
+        slots = Map.fetch!(slot_template, object["type"])
+
+        Map.update(object, "variants", [], fn variants ->
+          variants
+          |> Enum.take(1)
+          |> Enum.map(&Map.put(&1, "required_slots", slots))
+        end)
+      end)
+
+    assert bounded_objects != []
+
+    assert {:ok, bounded_visual_draft} =
+             Revisions.replace_draft_payload(
+               visual_draft,
+               Map.put(visual_draft.payload, "objects", bounded_objects)
+             )
+
+    assert {:ok, visual} = Revisions.confirm_draft(bounded_visual_draft.id)
+
+    reference_entries = reference_slot_entries(project, visual)
+    assert reference_entries != []
+    assert length(reference_entries) <= 10
 
     reference_results =
-      Enum.map(required_slots, fn slot ->
+      Enum.map(reference_entries, fn entry ->
         assert {:ok, spec} =
                  Generation.create_spec(project, %{
                    revision_id: visual.id,
                    kind: "reference_image",
                    candidate_index: 0,
                    formal: true,
-                   payload: %{
-                     "object_id" => "character:linxia",
-                     "variant_id" => "raincoat",
-                     "slot" => slot,
-                     "角色" => "林夏，二十七岁，黑色齐耳短发，深蓝色雨衣",
-                     "场景" => "中性灰背景的角色设定图",
-                     "必须出现" => ["同一张亚洲女性面孔", "深蓝色雨衣"],
-                     "禁止出现" => ["文字", "水印", "其他人物"],
-                     "width" => 768,
-                     "height" => 1360,
-                     "aspect_width" => 768,
-                     "aspect_height" => 1360
-                   }
+                   payload: entry.payload
                  })
 
         assert {:ok, generated} =
@@ -244,7 +299,7 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
 
         assert generated.technical_qc.status == :pass
         refute generated.semantic_qc.status == :evaluator_failed
-        {"character:linxia/raincoat/#{slot}", generated}
+        {entry.slot_key, generated}
       end)
 
     assignments =
@@ -255,14 +310,36 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
 
     assert {:ok, reference_set} = Revisions.confirm_draft(reference_draft.id)
 
-    assert {:ok, shot_draft} =
-             Directing.create_shot_plan_draft(project, narrative, visual, %{
-               "scenes" => [%{"id" => "SC001", "name" => "雨夜旧车站"}],
-               "shots" => shot_plan(),
-               "continuity" => %{"character_variant" => "raincoat"}
-             })
+    assert {:ok, directing_authority} =
+             Directing.proposal_authority(narrative, visual, reference_set)
 
-    assert {:ok, shot_plan} = Revisions.confirm_draft(shot_draft.id)
+    assert {:ok, directing_proposal} =
+             StructuredTextProposal.propose(project, :directing_proposal, directing_authority,
+               provider_mode: :openai
+             )
+
+    assert directing_proposal.request_snapshot.task_type == "directing_proposal"
+    assert directing_proposal.attempt.status == :succeeded
+
+    assert {:ok, shot_draft} =
+             Directing.create_proposal_draft(
+               project,
+               narrative,
+               visual,
+               reference_set,
+               directing_proposal.output
+             )
+
+    assert {:ok, bounded_shot_draft} =
+             Revisions.replace_draft_payload(
+               shot_draft,
+               Map.update(shot_draft.payload, "shots", [], &Enum.take(&1, 3))
+             )
+
+    assert {:ok, shot_plan} = Revisions.confirm_draft(bounded_shot_draft.id)
+
+    shots = shot_plan.payload["shots"]
+    assert is_list(shots) and length(shots) in 1..4
 
     assert {:ok, compiled_revision} =
              Compiler.compile_revision(
@@ -280,15 +357,12 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
       compiled_revision.payload["specs"]
       |> Enum.flat_map(fn compiled ->
         for candidate_index <- 0..1 do
-          payload =
-            compiled["payload"]
-            |> Map.put("shot_id", compiled["shot_id"])
-            |> Map.put("prompt", "保持林夏与三张已确认参考图一致，电影级中国竖屏短剧关键帧")
+          payload = Map.put(compiled["payload"], "shot_id", compiled["shot_id"])
 
           assert {:ok, spec} =
                    Generation.create_spec(project, %{
                      revision_id: compiled_revision.id,
-                     kind: "shot_keyframe",
+                     kind: compiled["kind"],
                      candidate_index: candidate_index,
                      formal: true,
                      payload: payload
@@ -303,7 +377,7 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
         end
       end)
 
-    assert length(shot_results) == 6
+    assert length(shot_results) == length(shots) * 2
 
     selections =
       shot_results
@@ -319,7 +393,7 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
         {shot_id, decision}
       end)
 
-    assert map_size(selections) == 3
+    assert map_size(selections) == length(shots)
     assert {:ok, timeline} = Timeline.create(project, narrative, shot_plan, selections)
     assert {:ok, version} = Timeline.freeze(timeline)
     assert {:ok, formal} = RenderRecipe.formal(version)
@@ -333,12 +407,20 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
       verification_summary(project, nodes, reference_results, shot_results, timeline, rendered)
 
     assert summary["decision"] == "pass"
-    assert summary["reference_images"] == 3
-    assert summary["shot_candidates"] == 6
-    assert summary["final_clips"] == 3
+    assert summary["reference_images"] == length(reference_entries)
+    assert summary["shot_candidates"] == length(shots) * 2
+    assert summary["final_clips"] == length(shots)
 
     snapshots = project_snapshots(project.id)
     assert snapshots != []
+
+    for proposal_task <- ~w(narrative_proposal visual_design_proposal directing_proposal) do
+      proposal_snapshots = Enum.filter(snapshots, &(&1.task_type == proposal_task))
+      assert proposal_snapshots != [], "missing persisted RequestSnapshot for #{proposal_task}"
+      assert Enum.all?(proposal_snapshots, &(&1.adapter == "openai_responses"))
+      assert Enum.all?(proposal_snapshots, &(&1.model == "gpt-5.6-terra"))
+    end
+
     serialized_snapshots = Jason.encode!(Enum.map(snapshots, &snapshot_payload/1))
     refute serialized_snapshots =~ api_key
     refute serialized_snapshots =~ "Bearer "
@@ -363,9 +445,30 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
     }
 
     for task <-
-          ~w(people_relations places_props_world events_timeline entity_merge episode_candidates conflict_check semantic_qc)a do
+          ~w(people_relations places_props_world events_timeline entity_merge episode_candidates conflict_check semantic_qc narrative_proposal visual_design_proposal directing_proposal image_prompt structured_repair)a do
       assert {:ok, _override} = Projects.put_model_override(project, task, text)
     end
+
+    assert {:ok, _narrative_appendix} =
+             Projects.create_prompt_appendix(
+               project,
+               :narrative_proposal,
+               "为控制烟测成本：最多输出 1 个 Scene，每个 Scene 最多 2 个 Beat，最多 3 条 DialogueEvent。"
+             )
+
+    assert {:ok, _visual_appendix} =
+             Projects.create_prompt_appendix(
+               project,
+               :visual_design_proposal,
+               "为控制烟测成本：正好输出 3 个对象（1 个角色、1 个场景、1 个道具），每个对象只输出 1 个 variant。"
+             )
+
+    assert {:ok, _directing_appendix} =
+             Projects.create_prompt_appendix(
+               project,
+               :directing_proposal,
+               "为控制烟测成本：正好输出 3 个 Shot，分别覆盖建立、细节与反应。"
+             )
 
     image = %{
       adapter: "openai_images",
@@ -443,66 +546,42 @@ defmodule Dramatizer.Acceptance.RealProviderSmokeTest do
     path
   end
 
-  defp confirmed(project, kind, payload) do
-    assert {:ok, draft} =
-             Revisions.create_draft(project, kind, payload, %{"real_smoke" => true})
+  defp reference_slot_entries(project, visual) do
+    config = ConfigResolver.resolve(:reference_image, project)
+    [width_string, height_string] = String.split(config.params["size"] || "768x1360", "x")
+    width = String.to_integer(width_string)
+    height = String.to_integer(height_string)
 
-    assert {:ok, revision} = Revisions.confirm_draft(draft.id)
-    revision
-  end
+    for object <- visual.payload["objects"] || [],
+        object["reference_required"],
+        variant <- object["variants"] || [],
+        slot <- variant["required_slots"] || [] do
+      reference_slot = "#{object["id"]}/#{variant["id"]}/#{slot}"
 
-  defp dialogue(id, shot_id, text, start_ms, end_ms) do
-    %{
-      "id" => id,
-      "shot_id" => shot_id,
-      "text" => text,
-      "start_ms" => start_ms,
-      "end_ms" => end_ms,
-      "style" => %{"position" => "safe_bottom"}
-    }
-  end
-
-  defp shot_plan do
-    [
       %{
-        "id" => "S001",
-        "scene_id" => "SC001",
-        "action" => "林夏在雨夜站台低头查看匿名信",
-        "camera" => "push_in",
-        "minimum_duration_ms" => 1_000,
-        "preferred_duration_ms" => 1_250,
-        "maximum_duration_ms" => 1_800,
-        "must_include" => ["林夏", "深蓝色雨衣", "牛皮纸信"],
-        "must_forbid" => ["其他人物", "可读文字", "水印"]
-      },
-      %{
-        "id" => "S002",
-        "scene_id" => "SC001",
-        "action" => "匿名信和三角折痕的手部特写",
-        "camera" => "pan_left",
-        "minimum_duration_ms" => 1_000,
-        "preferred_duration_ms" => 1_250,
-        "maximum_duration_ms" => 1_800,
-        "must_include" => ["林夏的手", "牛皮纸信", "三角折痕"],
-        "must_forbid" => ["完整可读信件内容", "水印"]
-      },
-      %{
-        "id" => "S003",
-        "scene_id" => "SC001",
-        "action" => "林夏望向铁轨白光，玻璃里隐约映出黑伞人",
-        "camera" => "pull_out",
-        "minimum_duration_ms" => 1_000,
-        "preferred_duration_ms" => 1_250,
-        "maximum_duration_ms" => 1_800,
-        "must_include" => ["林夏", "铁轨白光", "玻璃倒影", "黑伞轮廓"],
-        "must_forbid" => ["清晰陌生人面孔", "水印"]
+        slot_key: reference_slot,
+        payload: %{
+          "object_id" => object["id"],
+          "reference_slot" => reference_slot,
+          "slot_key" => "reference:#{reference_slot}",
+          "object" => object,
+          "variant" => variant,
+          "slot" => slot,
+          "prompt" => "为#{object["name"] || object["id"]}生成#{slot}参考图",
+          "width" => width,
+          "height" => height,
+          "aspect_width" => visual.profile_snapshot["aspect_width"] || 9,
+          "aspect_height" => visual.profile_snapshot["aspect_height"] || 16,
+          "aspect_tolerance" => 0.01,
+          "dependencies" => %{"visual_design_revision_id" => visual.id}
+        }
       }
-    ]
+    end
   end
 
   defp trace_final_clips!(timeline, compiled_revision, shot_plan, visual, narrative, source) do
     clips = Timeline.list_clips(timeline)
-    assert length(clips) == 3
+    assert length(clips) == length(shot_plan.payload["shots"] || [])
 
     Enum.each(clips, fn clip ->
       asset = Assets.get_asset!(clip.asset_version_id)

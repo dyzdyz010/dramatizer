@@ -2,7 +2,7 @@
 
 本机单用户的 AI 短剧制作台。当前 MVP 已实现从 TXT、Markdown、文本型 PDF 小说全文导入，到分析、分集、视觉权威、AI 参考图、镜头关键帧、字幕时间线和 H.264/AAC Animatic 导出的可追溯闭环。默认使用 Fake Provider，可离线验证完整生产合同，不需要登录、权限或 API Key。
 
-真实生产路径使用 `gpt-5.6-terra` 完成全文结构化分析、图像提示词补全和多模态语义 QC，再由 `gpt-image-2` 生成或编辑图像；AI 提示词只补足可生成细节，已确认的中文角色、场景和镜头数据仍是权威输入。Fake 与 OpenAI 共用 GenerationSpec、RequestSnapshot、Attempt、AssetVersion、成本、QC、人工选择和 Timeline 谱系。
+真实生产路径使用 `gpt-5.6-terra` 完成全文结构化分析、Narrative/VisualDesign/Directing 三类阶段 Proposal、图像提示词补全和多模态语义 QC，再由 `gpt-image-2` 生成或编辑图像；AI 提示词只补足可生成细节，已确认的中文角色、场景和镜头数据仍是权威输入。Fake 与 OpenAI 共用 GenerationSpec、RequestSnapshot、Attempt、AssetVersion、成本、QC、人工选择和 Timeline 谱系。
 
 ## 本机运行
 
@@ -27,6 +27,8 @@ Copy-Item .env.example .env
 DRAMATIZER_PROVIDER=openai
 OPENAI_API_KEY=your-key
 ```
+
+`DRAMATIZER_PROVIDER` 只接受 `fake` 或 `openai`：其他取值会拒绝启动而不是静默回退 Fake；`openai` 模式缺少 `OPENAI_API_KEY` 同样拒绝启动。工作台顶部始终显示当前模式徽标（“Fake 模拟模式”或“OpenAI 已启用”）。
 
 项目页可覆盖 ProductionProfile、各任务模型参数和用户可编辑 PromptAppendix；隐藏 CorePrompt 不会暴露到界面。项目配置之上保留系统默认，单次任务仍可通过命令 API 提供一次性覆盖。
 

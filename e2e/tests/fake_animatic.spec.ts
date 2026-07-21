@@ -19,6 +19,11 @@ test("Fake novel-to-animatic production, recovery, routes, and media", async ({p
   await page.getByLabel("项目名称").fill(`浏览器验收-${Date.now()}`)
   await page.getByRole("button", {name: "创建项目"}).click()
   await expect(page).toHaveURL(/\/projects\/[^/]+\/source$/)
+  await expect(page.getByText("Fake 模拟模式")).toBeVisible()
+  await expect(page.locator("aside[aria-label='制作阶段']")).toBeVisible()
+  await expect(page.locator("main[data-workspace-canvas]")).toBeVisible()
+  await expect(page.locator("aside[data-inspector]")).toBeVisible()
+  await expect(page.locator("[data-next-action]")).toBeVisible()
 
   const projectId = page.url().match(/\/projects\/([^/]+)\//)?.[1]
   expect(projectId).toBeTruthy()
@@ -28,60 +33,55 @@ test("Fake novel-to-animatic production, recovery, routes, and media", async ({p
     await waitForLiveView()
   }
 
+  await gotoStage("runs")
+  const modelOverride = page.locator("#model-override-form")
+  await modelOverride.locator("select[name='model_override[task_type]']").selectOption("reference_image")
+  await modelOverride.locator("input[name='model_override[candidate_count]']").fill("1")
+  await modelOverride.getByRole("button", {name: "保存模型覆盖"}).click()
+  await expect(page.getByText("项目模型覆盖已保存。")).toBeVisible()
+  await gotoStage("source")
+
   await page.locator("input[type=file]").setInputFiles(path.join(root, "e2e", "fixtures", "novel.md"))
   await expect(page.locator("#source-upload-form progress")).toHaveAttribute("value", "100")
   await page.getByRole("button", {name: "解析并落盘"}).click()
-  await expect(page.getByText("novel.md")).toBeVisible()
-  await expect(page.locator("main[data-state=ready]")).toBeVisible()
-
-  await gotoStage("analysis")
-  await page.getByRole("button", {name: "启动全文分析"}).click()
+  await expect(page).toHaveURL(new RegExp(`/projects/${projectId}/analysis$`), {timeout: 90_000})
   await expect(page.locator("main[data-stage=analysis][data-state=ready]")).toBeVisible()
   await expect(page.locator(".dag-node [data-state=ready]")).toHaveCount(6)
+  await expect(page.locator(".analysis-review").getByRole("heading", {name: "人物与关系"})).toBeVisible()
 
   await gotoStage("episodes")
   await page.getByRole("button", {name: "选择并创建 Narrative"}).click()
+  await expect(page.getByRole("heading", {name: "分集概览"})).toBeVisible()
+  await expect(page.getByRole("heading", {name: "Scene 与 Beat"})).toBeVisible()
   await page.getByRole("button", {name: "确认并冻结 Revision"}).click()
-  await expect(page.getByText("已冻结为不可变 Revision。")).toBeVisible()
+  await expect(page.getByText("Narrative 已冻结，VisualDesign 提案已生成。")).toBeVisible()
 
   await gotoStage("visuals")
-  await page.getByRole("button", {name: "创建 VisualDesign"}).click()
+  await expect(page.getByText("视觉 Variant", {exact: true}).first()).toBeVisible()
   await page.getByRole("button", {name: "确认并冻结 Revision"}).click()
-
-  const referencePath = path.join(artifactRoot, "reference.png")
-  execFileSync(
-    path.join(root, "app", ".venv", "Scripts", "python.exe"),
-    [
-      "-c",
-      "from PIL import Image; import sys; Image.new('RGB', (270, 480), (32, 58, 74)).save(sys.argv[1], format='PNG')",
-      referencePath
-    ]
-  )
-  await page.locator("input[type=file]").setInputFiles(referencePath)
-  await expect(page.locator("#media-upload-form progress")).toHaveAttribute("value", "100")
-  await page.getByRole("button", {name: "存入素材库"}).click()
-  await expect(page.getByText("参考图已进入统一 AssetStore。")).toBeVisible()
-
-  const referenceSelects = page.locator("#reference-set-form select")
-  await expect(referenceSelects).toHaveCount(6)
-  await expect(referenceSelects.first().locator("option")).toHaveCount(2)
-  for (let index = 0; index < (await referenceSelects.count()); index++) {
-    await referenceSelects.nth(index).selectOption({index: 1})
+  await page.getByRole("button", {name: "AI 生成参考候选"}).click()
+  const referenceGroups = page.locator("[data-candidate-group^='reference:']")
+  await expect(referenceGroups.first()).toBeVisible({timeout: 90_000})
+  const referenceGroupCount = await referenceGroups.count()
+  expect(referenceGroupCount).toBeGreaterThan(0)
+  for (let index = 0; index < referenceGroupCount; index++) {
+    await referenceGroups.nth(index).getByRole("button", {name: "选择为主图"}).first().click()
   }
-  await page.getByRole("button", {name: "创建 ReferenceSet 草稿"}).click()
+  await page.getByRole("button", {name: "从已选主图创建 ReferenceSet"}).click()
   await page.getByRole("button", {name: "确认并冻结 Revision"}).click()
+  await expect(page.getByText("ReferenceSet 已冻结，Directing 提案已生成。")).toBeVisible()
 
   await gotoStage("shots")
-  await page.getByRole("button", {name: "创建 ShotPlan 草稿"}).click()
+  await expect(page.getByText("连续性", {exact: true}).first()).toBeVisible()
   await page.getByRole("button", {name: "确认并冻结 Revision"}).click()
   await page.getByRole("button", {name: "编译冻结 GenerationSpec"}).click()
   await page.getByRole("button", {name: "生成候选并执行 QC"}).click()
   await expect(page.locator(".candidate-card")).toHaveCount(6, {timeout: 90_000})
 
-  for (const shotId of ["S001", "S002", "S003"]) {
-    const candidate = page.locator(`button[phx-value-slot-key="shot:${shotId}"]:not([disabled])`).first()
-    await candidate.click()
-    await expect(page.locator(`button[phx-value-slot-key="shot:${shotId}"][disabled]`)).toHaveCount(1)
+  const shotGroups = page.locator("[data-candidate-group^='shot:']")
+  await expect(shotGroups).toHaveCount(3)
+  for (let index = 0; index < (await shotGroups.count()); index++) {
+    await shotGroups.nth(index).getByRole("button", {name: "选择为主图"}).first().click()
   }
 
   await gotoStage("timeline")
@@ -138,6 +138,17 @@ test("Fake novel-to-animatic production, recovery, routes, and media", async ({p
   const costAfterRecovery = await page.locator(".cost-strip strong").textContent()
   await page.getByRole("button", {name: "恢复并注入重复乱序回调"}).click()
   await expect(page.locator(".cost-strip strong")).toHaveText(costAfterRecovery || "")
+
+  for (const forbidden of ["Narrative JSON", "VisualDesign JSON", "ShotPlan JSON", "结构化内容"]) {
+    await expect(page.getByText(forbidden, {exact: false})).toHaveCount(0)
+  }
+  const textareas = page.locator("textarea")
+  const textareaValues: string[] = []
+  for (let index = 0; index < (await textareas.count()); index++) {
+    textareaValues.push(await textareas.nth(index).inputValue())
+  }
+  const rawJsonEditors = textareaValues.filter(value => /^\s*[\[{]/.test(value))
+  expect(rawJsonEditors).toHaveLength(0)
 
   await page.screenshot({path: path.join(artifactRoot, "fake-production-workspace.png"), fullPage: true})
   expect(readFileSync(mp4Path).byteLength).toBeGreaterThan(1_000)

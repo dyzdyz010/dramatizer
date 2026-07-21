@@ -60,13 +60,36 @@ function Assert-RealSmokeSummary {
 
     if ($Summary.decision -ne "pass") { throw "Real-smoke decision was not pass." }
     if ([int]$Summary.analysis_nodes -ne 6) { throw "Expected exactly 6 analysis nodes." }
-    if ([int]$Summary.reference_images -ne 3) { throw "Expected exactly 3 required reference images." }
-    if ([int]$Summary.shot_candidates -ne 6) { throw "Expected exactly 6 shot candidates." }
-    if ([int]$Summary.final_clips -ne 3) { throw "Expected exactly 3 final clips." }
-    if ([int]$Summary.technical_qc_reports -ne 9) { throw "Expected exactly 9 technical QC reports." }
-    if ([int]$Summary.semantic_qc_reports -ne 9) { throw "Expected exactly 9 semantic QC reports." }
-    if ([int]$Summary.provider_requests -lt 24) { throw "Expected at least 24 persisted provider requests." }
-    if ([int]$Summary.provider_request_ids -lt 24) { throw "Expected at least 24 captured provider request IDs." }
+
+    # The proposal-driven gate derives its shape from the AI-confirmed
+    # VisualDesign and ShotPlan; the acceptance test bounds them, and the
+    # summary must stay internally consistent instead of matching fixed counts.
+    $references = [int]$Summary.reference_images
+    $shotCandidates = [int]$Summary.shot_candidates
+    $clips = [int]$Summary.final_clips
+
+    if ($references -lt 1 -or $references -gt 10) { throw "Expected between 1 and 10 reference images." }
+    if ($clips -lt 1 -or $clips -gt 4) { throw "Expected between 1 and 4 final clips." }
+    if ($shotCandidates -ne ($clips * 2)) { throw "Expected exactly 2 candidates per final shot." }
+    if ([int]$Summary.technical_qc_reports -ne ($references + $shotCandidates)) {
+        throw "Expected one technical QC report per generated image."
+    }
+    if ([int]$Summary.semantic_qc_reports -ne ($references + $shotCandidates)) {
+        throw "Expected one semantic QC report per generated image."
+    }
+
+    # Floor: 6 analysis nodes + 3 stage proposals + one image and one semantic
+    # QC request per generated candidate + one image-prompt proposal per unique
+    # authority (each reference slot, and one per shot because same-shot
+    # candidates reuse the successful prompt attempt). Retries/repairs add more.
+    $minRequests = 6 + 3 + 2 * ($references + $shotCandidates) + ($references + $clips)
+    if ([int]$Summary.provider_requests -lt $minRequests) {
+        throw "Expected at least $minRequests persisted provider requests."
+    }
+    if ([int]$Summary.provider_request_ids -lt ($minRequests - 2)) {
+        throw "Expected at least $($minRequests - 2) captured provider request IDs."
+    }
+
     if ([int64]$Summary.usage_units -le 0) { throw "Expected non-zero provider usage." }
     if ([int]$Summary.formal_video.width -ne 1080 -or [int]$Summary.formal_video.height -ne 1920) {
         throw "Formal video dimensions did not match 1080x1920."

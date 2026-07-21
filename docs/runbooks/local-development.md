@@ -16,6 +16,8 @@
 
 脚本只监听 `127.0.0.1`，启动 PostgreSQL、执行迁移和资源构建，再运行 Phoenix。默认地址是 `http://127.0.0.1:4000`。终端只输出服务地址和 Provider 模式，不输出 `.env` 或凭据值。
 
+Provider 模式是显式的：`DRAMATIZER_PROVIDER` 只接受 `fake` 或 `openai`，其他取值会在启动阶段直接失败，不会静默回退到 Fake；`openai` 模式还要求 `.env` 提供 `OPENAI_API_KEY`，缺失同样拒绝启动。网页工作台顶部始终显示当前模式徽标（“Fake 模拟模式”或“OpenAI 已启用”）。
+
 如果 `var/write-checkpoint.json` 存在，说明备份或恢复正在停写；完成或处理该操作后才能启动。
 
 ## 日常验证
@@ -43,6 +45,6 @@ Pop-Location
 ./scripts/real-smoke.ps1 -Force
 ```
 
-有界真实门禁固定执行 6 个全文分析节点、3 张必需角色参考图、每个 3 Shot 的 2 张候选、技术/语义 QC、显式候选选择和 1080×1920 正式 Animatic。文本与语义 QC 使用 `gpt-5.6-terra`，图像使用 `gpt-image-2`。请求快照保存模型、配置/提示词/Schema 哈希、Provider request ID 和原始 usage map；不保存 Authorization header 或 Key。Provider 未返回货币成本时，状态记录为“不可用”，不得把它解释为零成本。
+有界真实门禁执行 6 个全文分析节点、`narrative_proposal`/`visual_design_proposal`/`directing_proposal` 三类真实文本 Proposal、按已确认 VisualDesign 必需槽位生成的参考图（PromptAppendix 把规模约束为 1 角色、1 场景、1 道具，各 1 个 variant，总槽位不超过 10）、每 Shot 2 张候选（PromptAppendix 约束为 3 Shot）、AI 图像提示词补全、技术/语义 QC、显式候选选择和 1080×1920 正式 Animatic。文本、Proposal 与语义 QC 使用 `gpt-5.6-terra`，图像使用 `gpt-image-2`。请求快照保存模型、配置/提示词/Schema 哈希、Provider request ID 和原始 usage map；不保存 Authorization header 或 Key。Provider 未返回货币成本时，状态记录为“不可用”，不得把它解释为零成本。
 
 若传输层出现一次 `provider_unavailable`、`provider_timeout` 或 `rate_limited`，烟测只对失败的分析 Node 做一次显式续跑；结构校验、凭据、额度或组织验证错误不会自动重试。GPT Image 账号可能需要在 OpenAI 控制台完成组织验证，相关要求以 [OpenAI 图像生成指南](https://developers.openai.com/api/docs/guides/image-generation) 为准。
