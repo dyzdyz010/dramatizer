@@ -40,7 +40,10 @@ config :dramatizer,
 config :dramatizer, Oban,
   repo: Dramatizer.Repo,
   queues: [workflow: 5, generation: 3, media: 2, qc: 3],
-  plugins: [{Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60}]
+  plugins: [
+    {Oban.Plugins.Pruner, max_age: 7 * 24 * 60 * 60},
+    {Oban.Plugins.Cron, crontab: [{"*/1 * * * *", Dramatizer.Execution.ReconcilerJob}]}
+  ]
 
 text_model = %{
   adapter: "openai_responses",

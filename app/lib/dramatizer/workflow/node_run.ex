@@ -16,6 +16,10 @@ defmodule Dramatizer.Workflow.NodeRun do
     field :run_count, :integer, default: 1
     field :result, :map, default: %{}
     field :error_code, :string
+    field :worker, :string
+    field :active_job_id, :integer
+    field :lease_expires_at, :utc_datetime_usec
+    field :next_retry_at, :utc_datetime_usec
     field :started_at, :utc_datetime_usec
     field :completed_at, :utc_datetime_usec
     field :lock_version, :integer, default: 1
@@ -46,7 +50,18 @@ defmodule Dramatizer.Workflow.NodeRun do
 
   def transition_changeset(node, attrs) do
     node
-    |> cast(attrs, [:status, :result, :error_code, :started_at, :completed_at, :run_count])
+    |> cast(attrs, [
+      :status,
+      :result,
+      :error_code,
+      :worker,
+      :active_job_id,
+      :lease_expires_at,
+      :next_retry_at,
+      :started_at,
+      :completed_at,
+      :run_count
+    ])
     |> validate_required([:status, :result, :run_count])
     |> optimistic_lock(:lock_version)
   end

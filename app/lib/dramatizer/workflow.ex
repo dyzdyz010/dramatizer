@@ -11,7 +11,7 @@ defmodule Dramatizer.Workflow do
   @allowed_transitions %{
     blocked: [:queued, :cancelled, :superseded],
     queued: [:running, :cancelled, :superseded],
-    running: [:succeeded, :failed, :cancelled, :superseded],
+    running: [:queued, :succeeded, :failed, :cancelled, :superseded],
     failed: [:queued, :superseded],
     succeeded: [],
     cancelled: [],
@@ -76,37 +76,46 @@ defmodule Dramatizer.Workflow do
     Repo.transaction(fn ->
       current = Repo.one!(from node in NodeRun, where: node.id == ^id, lock: "FOR UPDATE")
 
-      if target in Map.fetch!(@allowed_transitions, current.status) do
-        values = transition_values(current, target, attrs)
-
-        updated =
-          current
-          |> NodeRun.transition_changeset(values)
-          |> Repo.update!()
-
-        event_attrs = %{
-          aggregate_type: "node_run",
-          aggregate_id: updated.id,
-          event_type: "node_#{target}",
-          payload: %{
-            "workflow_run_id" => updated.workflow_run_id,
-            "node_key" => updated.node_key,
-            "status" => Atom.to_string(updated.status),
-            "run_count" => updated.run_count
-          },
-          idempotency_key: "node:#{updated.id}:#{target}:#{updated.run_count}"
-        }
-
-        %OutboxEvent{}
-        |> OutboxEvent.create_changeset(event_attrs)
-        |> Repo.insert!()
-
-        updated
-      else
-        Repo.rollback(:invalid_transition)
+      case transition_locked(current, target, attrs) do
+        {:ok, updated} -> updated
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
     |> unwrap()
+  end
+
+  @doc false
+  def transition_locked(%NodeRun{} = current, target, attrs) do
+    if target in Map.fetch!(@allowed_transitions, current.status) do
+      values = transition_values(current, target, attrs)
+
+      updated =
+        current
+        |> NodeRun.transition_changeset(values)
+        |> Repo.update!()
+
+      event_attrs = %{
+        aggregate_type: "node_run",
+        aggregate_id: updated.id,
+        event_type: "node_#{target}",
+        payload: %{
+          "workflow_run_id" => updated.workflow_run_id,
+          "node_key" => updated.node_key,
+          "status" => Atom.to_string(updated.status),
+          "run_count" => updated.run_count
+        },
+        idempotency_key:
+          "node:#{updated.id}:#{target}:#{updated.run_count}:#{updated.lock_version}"
+      }
+
+      %OutboxEvent{}
+      |> OutboxEvent.create_changeset(event_attrs)
+      |> Repo.insert!()
+
+      {:ok, updated}
+    else
+      {:error, :invalid_transition}
+    end
   end
 
   def retry_node(%NodeRun{status: :failed} = node) do
@@ -114,6 +123,9 @@ defmodule Dramatizer.Workflow do
       run_count: node.run_count + 1,
       error_code: nil,
       result: %{},
+      active_job_id: nil,
+      lease_expires_at: nil,
+      next_retry_at: nil,
       started_at: nil,
       completed_at: nil
     })
@@ -198,10 +210,21 @@ defmodule Dramatizer.Workflow do
     defaults =
       case target do
         :running ->
-          %{status: target, started_at: node.started_at || now}
+          %{
+            status: target,
+            started_at: node.started_at || now,
+            completed_at: nil,
+            next_retry_at: nil
+          }
 
         status when status in [:succeeded, :failed, :cancelled, :superseded] ->
-          %{status: target, completed_at: now}
+          %{
+            status: target,
+            completed_at: now,
+            active_job_id: nil,
+            lease_expires_at: nil,
+            next_retry_at: nil
+          }
 
         _ ->
           %{status: target}

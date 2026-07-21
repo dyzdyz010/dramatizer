@@ -138,7 +138,7 @@ git commit -m "feat: add execution events and error classes"
 
 **Interfaces:**
 - Produces: `WorkerLifecycle.start/2`, `succeed/3`, `fail/3`; `ReconcilerJob.perform/1`; `mix dramatizer.execution.reconcile`.
-- NodeRun fields: `active_job_id :integer`, `lease_expires_at :utc_datetime_usec`, `next_retry_at :utc_datetime_usec`.
+- NodeRun fields: `worker :string`, `active_job_id :integer`, `lease_expires_at :utc_datetime_usec`, `next_retry_at :utc_datetime_usec`.
 
 - [ ] **Step 1: Write failing lifecycle tests**
 
@@ -162,6 +162,7 @@ Expected: failure for missing schema fields and module.
 
 ```elixir
 alter table(:node_runs) do
+  add :worker, :text
   add :active_job_id, :bigint
   add :lease_expires_at, :utc_datetime_usec
   add :next_retry_at, :utc_datetime_usec
@@ -171,7 +172,7 @@ create index(:node_runs, [:status, :lease_expires_at])
 create index(:node_runs, [:active_job_id])
 ```
 
-Permit `running -> queued` only through the lifecycle retry function. Clear lease fields on terminal transitions.
+Permit `running -> queued` only through the lifecycle retry function. Clear lease fields on terminal transitions. Resolve persisted Worker names through an explicit registry of application Worker modules; never call `String.to_atom/1` on database data.
 
 - [ ] **Step 4: Implement lifecycle locking and deterministic backoff**
 
