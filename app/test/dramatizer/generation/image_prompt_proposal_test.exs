@@ -5,6 +5,7 @@ defmodule Dramatizer.Generation.ImagePromptProposalTest do
 
   alias Dramatizer.Costs
   alias Dramatizer.Costs.CostEntry
+  alias Dramatizer.Generation.Attempt
   alias Dramatizer.Generation.ImagePromptProposal
   alias Dramatizer.Projects
   alias Dramatizer.Repo
@@ -73,5 +74,29 @@ defmodule Dramatizer.Generation.ImagePromptProposalTest do
     assert Enum.count(entries, &(&1.entry_type == :reservation)) == 1
     assert Enum.count(entries, &(&1.entry_type == :actual)) == 1
     assert Enum.find(entries, &(&1.entry_type == :actual)).amount_micros == nil
+  end
+
+  test "submission timeout is exposed as one stable unknown-remote outcome" do
+    assert {:ok, project} = Projects.create_project(%{name: "提示词远端未知"})
+    owner = self()
+
+    submitter = fn _snapshot, _attempt ->
+      send(owner, :submitted)
+      {:error, :provider_timeout, %{reason: :socket_timeout}}
+    end
+
+    authority = %{"角色" => %{"姓名" => "林夏"}, "场景" => "雨夜旧车站"}
+    opts = [provider_mode: :openai, submitter: submitter]
+
+    assert {:error, :unknown_remote_state} =
+             ImagePromptProposal.propose(project, :shot_keyframe, authority, opts)
+
+    assert_receive :submitted
+
+    assert {:error, :unknown_remote_state} =
+             ImagePromptProposal.propose(project, :shot_keyframe, authority, opts)
+
+    refute_receive :submitted
+    assert Repo.one!(Attempt).status == :unknown_remote_state
   end
 end

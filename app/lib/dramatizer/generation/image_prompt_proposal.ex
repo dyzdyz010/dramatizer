@@ -48,6 +48,7 @@ defmodule Dramatizer.Generation.ImagePromptProposal do
            }),
          {:ok, snapshot, _first_attempt} <-
            Generation.prepare_attempt(spec, :image_prompt, project, %{
+             node_run_id: Keyword.get(opts, :node_run_id),
              task_override: task_override(mode, Keyword.get(opts, :task_override, %{})),
              request_input: %{
                "input" => prompt.content,
@@ -152,8 +153,14 @@ defmodule Dramatizer.Generation.ImagePromptProposal do
       )
 
     case latest.status do
-      status when status in [:failed, :timed_out] -> Generation.retry_attempt(latest)
-      _ -> {:ok, latest}
+      status when status in [:failed, :timed_out] ->
+        Generation.retry_attempt(latest)
+
+      status when status in [:submitted, :unknown_remote_state] ->
+        {:error, :unknown_remote_state}
+
+      _status ->
+        {:ok, latest}
     end
   end
 

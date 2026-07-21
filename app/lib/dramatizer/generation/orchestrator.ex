@@ -50,6 +50,7 @@ defmodule Dramatizer.Generation.Orchestrator do
       reference_assets: Keyword.get(opts, :reference_assets, []),
       opts: opts,
       prepare_options: %{
+        node_run_id: Keyword.get(opts, :node_run_id),
         task_override: %{adapter: "fake", credential_ref: "none", model: "fake-v1"},
         request_input: %{
           "generation_spec" => spec.payload,
@@ -92,6 +93,7 @@ defmodule Dramatizer.Generation.Orchestrator do
          reference_assets: reference_assets,
          opts: opts,
          prepare_options: %{
+           node_run_id: Keyword.get(opts, :node_run_id),
            task_override: task_override,
            request_input: request_input,
            prompt_snapshot: %{
@@ -119,10 +121,20 @@ defmodule Dramatizer.Generation.Orchestrator do
       )
 
     case latest.status do
-      :prepared -> {:ok, latest}
-      status when status in [:failed, :timed_out] -> Generation.retry_attempt(latest)
-      :succeeded -> {:ok, latest}
-      status -> {:error, {:attempt_not_runnable, status}}
+      :prepared ->
+        {:ok, latest}
+
+      status when status in [:failed, :timed_out] ->
+        Generation.retry_attempt(latest)
+
+      status when status in [:submitted, :unknown_remote_state] ->
+        {:error, :unknown_remote_state}
+
+      :succeeded ->
+        {:ok, latest}
+
+      status ->
+        {:error, {:attempt_not_runnable, status}}
     end
   end
 

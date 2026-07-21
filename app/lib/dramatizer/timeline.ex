@@ -319,23 +319,38 @@ defmodule Dramatizer.Timeline do
       "recipe_hash" => manifest.recipe_hash
     }
 
-    with {:ok, run} <-
-           Workflow.create_run(
-             project,
-             "timeline_render_v1",
-             input,
-             "timeline-render:#{manifest.render_mode}:#{manifest.recipe_hash}"
-           ),
-         {:ok, stored_node} <- Workflow.add_node(run, "render", input, []),
-         {:ok, node} <- queueable_render_node(stored_node),
-         {:ok, running} <- ensure_render_run(run, node),
-         {:ok, execution} <- enqueue_render_node(node, opts) do
-      {:ok,
-       %{
-         workflow_run: running,
-         node_run: execution.node,
-         job: execution.job
-       }}
+    result =
+      Repo.transaction(fn ->
+        with {:ok, run} <-
+               Workflow.create_run(
+                 project,
+                 "timeline_render_v1",
+                 input,
+                 "timeline-render:#{manifest.render_mode}:#{manifest.recipe_hash}"
+               ),
+             {:ok, stored_node} <- Workflow.add_node(run, "render", input, []),
+             {:ok, node} <- queueable_render_node(stored_node),
+             {:ok, running} <- ensure_render_run(run, node),
+             {:ok, execution} <- enqueue_render_node(node, opts, false) do
+          %{workflow_run: running, execution: execution}
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    case result do
+      {:ok, %{workflow_run: running, execution: execution}} ->
+        Enqueue.notify(execution.node)
+
+        {:ok,
+         %{
+           workflow_run: running,
+           node_run: execution.node,
+           job: execution.job
+         }}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -498,7 +513,7 @@ defmodule Dramatizer.Timeline do
 
   defp ensure_render_run(%WorkflowRun{} = run, _node), do: Workflow.mark_run(run, :running)
 
-  defp enqueue_render_node(%NodeRun{status: :succeeded} = node, _opts) do
+  defp enqueue_render_node(%NodeRun{status: :succeeded} = node, _opts, _notify?) do
     job =
       Repo.one!(
         from job in Oban.Job,
@@ -510,8 +525,11 @@ defmodule Dramatizer.Timeline do
     {:ok, %{node: node, job: job}}
   end
 
-  defp enqueue_render_node(%NodeRun{} = node, opts) do
-    Enqueue.node(node, RenderJob, job_options: Keyword.get(opts, :job_options, []))
+  defp enqueue_render_node(%NodeRun{} = node, opts, notify?) do
+    Enqueue.node(node, RenderJob,
+      job_options: Keyword.get(opts, :job_options, []),
+      notify: notify?
+    )
   end
 
   defp stringify(value) when is_map(value) do

@@ -157,7 +157,7 @@ defmodule Dramatizer.Generation.OrchestratorInvariantsTest do
 
     assert_receive :image_submitted
 
-    assert {:error, {:attempt_not_runnable, :unknown_remote_state}} =
+    assert {:error, :unknown_remote_state} =
              Orchestrator.generate(spec, :shot_keyframe, project, options)
 
     refute_receive :image_submitted

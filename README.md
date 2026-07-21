@@ -4,6 +4,8 @@
 
 真实生产路径使用 `gpt-5.6-terra` 完成全文结构化分析、Narrative/VisualDesign/Directing 三类阶段 Proposal、图像提示词补全和多模态语义 QC，再由 `gpt-image-2` 生成或编辑图像；AI 提示词只补足可生成细节，已确认的中文角色、场景和镜头数据仍是权威输入。Fake 与 OpenAI 共用 GenerationSpec、RequestSnapshot、Attempt、AssetVersion、成本、QC、人工选择和 Timeline 谱系。
 
+分析、Proposal、图片生成、两层 QC、预览和正式渲染全部通过 Oban 持久任务执行。页面提示“已加入队列”只表示任务已被可靠接收，不表示已经完成；实际进度以 PostgreSQL 中的 WorkflowRun、NodeRun、Attempt 和 RenderManifest 为准。离开页面不会中断任务，重新进入后会恢复 queued、running、failed、unknown remote state、ready 等真实状态；Phoenix PubSub 只负责通知页面重新读取数据库。
+
 ## 本机运行
 
 需要 Docker Desktop、Elixir/OTP、Python 与 FFmpeg。首次准备：
@@ -42,7 +44,7 @@ OPENAI_API_KEY=your-key
 ```
 
 - `test.ps1`：ExUnit 单元、集成和验收测试。
-- `e2e.ps1`：在独立数据库、独立素材目录和 4100 端口运行真实 Chromium 全流程，验证 MP4/SRT 下载与 FFprobe，不污染开发库。
+- `e2e.ps1`：在独立数据库、独立素材目录和 4100 端口运行真实 Chromium 全流程，显式等待后台状态，验证重连可见性、故障恢复、幂等操作、MP4/SRT 下载与 FFprobe，不污染开发库。
 - `real-smoke.ps1`：复核最近一次脱敏真实门禁；加 `-Force` 才会重新执行有费用的 OpenAI 文本、图像、QC 与正式导出闭环。
 - `backup.ps1` / `restore.ps1`：带写入检查点、数据库 dump、AssetStore manifest 和恢复后一致性校验的本地备份恢复。
 
@@ -52,6 +54,8 @@ OPENAI_API_KEY=your-key
 
 - 当前 PRD：[`docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md`](docs/superpowers/specs/2026-07-15-dramatizer-mvp-prd.md)
 - 冻结实施计划：[`docs/superpowers/plans/2026-07-15-dramatizer-mvp.md`](docs/superpowers/plans/2026-07-15-dramatizer-mvp.md)
+- 异步执行设计：[`docs/superpowers/specs/2026-07-21-async-execution-and-truthful-status-design.md`](docs/superpowers/specs/2026-07-21-async-execution-and-truthful-status-design.md)
+- 异步执行实施计划：[`docs/superpowers/plans/2026-07-21-async-execution-and-truthful-status.md`](docs/superpowers/plans/2026-07-21-async-execution-and-truthful-status.md)
 - 当前检查点：[`STATUS.md`](STATUS.md)
 - 原始冻结架构基线：[`docs/ai_short_drama_framework_v0.2/README.md`](docs/ai_short_drama_framework_v0.2/README.md)
 

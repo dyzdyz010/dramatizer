@@ -5,6 +5,7 @@ defmodule Dramatizer.Quality.SemanticQCTest do
   alias Dramatizer.Costs
   alias Dramatizer.Costs.CostEntry
   alias Dramatizer.Generation
+  alias Dramatizer.Generation.Attempt
   alias Dramatizer.Projects
   alias Dramatizer.Quality
   alias Dramatizer.Quality.{SelectionDecision, SemanticQC, TechnicalQC}
@@ -142,14 +143,14 @@ defmodule Dramatizer.Quality.SemanticQCTest do
                Quality.select(context.project, "slot-#{status}", context.spec, context.candidate)
     end
 
-    unavailable = fn _snapshot, _attempt ->
-      {:error, :provider_unavailable, %{reason: :fixture}}
+    rejected = fn _snapshot, _attempt ->
+      {:error, :provider_rejected, %{reason: :fixture}}
     end
 
     assert {:ok, failed_report} =
              SemanticQC.run(context.candidate, context.spec, context.project,
-               evaluator: unavailable,
-               evaluation_key: "unavailable"
+               evaluator: rejected,
+               evaluation_key: "rejected"
              )
 
     assert failed_report.status == :evaluator_failed
@@ -157,6 +158,45 @@ defmodule Dramatizer.Quality.SemanticQCTest do
 
     assert {:ok, _decision} =
              Quality.select(context.project, "slot-unavailable", context.spec, context.candidate)
+  end
+
+  test "transient evaluator failures retry without persisting a misleading semantic report",
+       context do
+    for code <- [:provider_unavailable, :rate_limited] do
+      evaluator = fn _snapshot, _attempt -> {:error, code, %{reason: :fixture}} end
+
+      assert {:error, ^code} =
+               SemanticQC.run(context.candidate, context.spec, context.project,
+                 evaluator: evaluator,
+                 evaluation_key: Atom.to_string(code)
+               )
+    end
+
+    assert Repo.aggregate(Dramatizer.Quality.QualityReport, :count) == 1
+    assert Enum.all?(Repo.all(Attempt), &(&1.status == :failed))
+  end
+
+  test "evaluator submission timeout becomes stable unknown remote state", context do
+    owner = self()
+
+    evaluator = fn _snapshot, _attempt ->
+      send(owner, :submitted)
+      {:error, :provider_timeout, %{reason: :socket_timeout}}
+    end
+
+    opts = [evaluator: evaluator, evaluation_key: "timeout"]
+
+    assert {:error, :unknown_remote_state} =
+             SemanticQC.run(context.candidate, context.spec, context.project, opts)
+
+    assert_receive :submitted
+
+    assert {:error, :unknown_remote_state} =
+             SemanticQC.run(context.candidate, context.spec, context.project, opts)
+
+    refute_receive :submitted
+    assert Repo.one!(Attempt).status == :unknown_remote_state
+    assert Repo.aggregate(Dramatizer.Quality.QualityReport, :count) == 1
   end
 
   test "semantic QC reserves before evaluator submission and settles unknown actual", context do

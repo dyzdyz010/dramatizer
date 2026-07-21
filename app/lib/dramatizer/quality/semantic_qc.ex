@@ -42,6 +42,7 @@ defmodule Dramatizer.Quality.SemanticQC do
            }),
          {:ok, snapshot, attempt} <-
            Generation.prepare_attempt(evaluator_spec, :semantic_qc, project, %{
+             node_run_id: Keyword.get(opts, :node_run_id),
              task_override: Keyword.get(opts, :task_override, %{}),
              request_input: %{
                "input" => [%{"role" => "user", "content" => content}],
@@ -88,7 +89,7 @@ defmodule Dramatizer.Quality.SemanticQC do
             status: to_string(code)
           })
 
-          persist_evaluator_failure(
+          handle_evaluator_error(
             asset,
             target_spec,
             snapshot,
@@ -144,8 +145,53 @@ defmodule Dramatizer.Quality.SemanticQC do
          %Attempt{status: status},
          _evaluator,
          _evaluation_key
+       )
+       when status in [:submitted, :unknown_remote_state],
+       do: {:error, :unknown_remote_state}
+
+  defp dispatch_attempt(
+         _asset,
+         _target_spec,
+         _project,
+         _snapshot,
+         %Attempt{status: status},
+         _evaluator,
+         _evaluation_key
        ),
        do: {:error, {:semantic_attempt_not_runnable, status}}
+
+  defp handle_evaluator_error(
+         _asset,
+         _target_spec,
+         _snapshot,
+         attempt,
+         code,
+         metadata,
+         _evaluation_key
+       )
+       when code in [:provider_timeout, :provider_unavailable, :rate_limited] do
+    Generation.record_submission_error(attempt, code, metadata, :openai)
+  end
+
+  defp handle_evaluator_error(
+         asset,
+         target_spec,
+         snapshot,
+         attempt,
+         code,
+         metadata,
+         evaluation_key
+       ) do
+    persist_evaluator_failure(
+      asset,
+      target_spec,
+      snapshot,
+      attempt,
+      code,
+      metadata,
+      evaluation_key
+    )
+  end
 
   defp persist_evaluation(asset, target_spec, snapshot, attempt, result, evaluation_key) do
     case validate_output(result.output) do

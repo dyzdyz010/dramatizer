@@ -5,7 +5,9 @@ defmodule Dramatizer.Quality.TechnicalQCTest do
   alias Dramatizer.Generation
   alias Dramatizer.Projects
   alias Dramatizer.Quality
+  alias Dramatizer.Quality.QualityReport
   alias Dramatizer.Quality.TechnicalQC
+  alias Dramatizer.Repo
 
   setup do
     previous = Application.fetch_env!(:dramatizer, :asset_store_root)
@@ -88,6 +90,22 @@ defmodule Dramatizer.Quality.TechnicalQCTest do
     assert {:ok, corrupted} = TechnicalQC.run(asset, spec)
     assert corrupted.evidence["checks"]["blob_integrity"]["status"] == "fail"
     assert corrupted.evidence["checks"]["decodable"]["status"] == "fail"
+  end
+
+  test "media worker infrastructure failures are retryable and do not create false reports",
+       context do
+    assert {:ok, asset} = store_image(context.project, 540, 960, "image/png", "transient")
+
+    assert {:ok, spec} =
+             Generation.create_spec(context.project, %{
+               kind: "shot_keyframe",
+               payload: %{"width" => 540, "height" => 960}
+             })
+
+    probe = fn _path -> {:error, %{code: "worker_timeout", message: "fixture"}} end
+
+    assert {:error, :media_worker_timeout} = TechnicalQC.run(asset, spec, probe: probe)
+    assert Repo.aggregate(QualityReport, :count) == 0
   end
 
   defp store_image(project, width, height, expected_mime, key) do

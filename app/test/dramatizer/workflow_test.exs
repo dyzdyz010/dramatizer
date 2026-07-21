@@ -125,4 +125,38 @@ defmodule Dramatizer.WorkflowTest do
     assert stored.active_job_id == nil
     assert stored.worker == nil
   end
+
+  test "ready-node transition rolls back when its durable job cannot be inserted" do
+    assert {:ok, project} = Projects.create_project(%{name: "下游入队回滚"})
+    assert {:ok, run} = Workflow.create_run(project, "ready_v1", %{}, "ready-rollback")
+    assert {:ok, root} = Workflow.add_node(run, "root", %{}, [])
+    assert {:ok, child} = Workflow.add_node(run, "child", %{}, ["root"])
+    assert {:ok, running} = Workflow.transition_node(root, :running)
+    assert {:ok, _succeeded} = Workflow.transition_node(running, :succeeded)
+
+    assert {:error, %Ecto.Changeset{valid?: false}} =
+             Enqueue.ready_nodes(run.id, fn _node -> InvalidWorker end)
+
+    stored = Repo.get!(NodeRun, child.id)
+    assert stored.status == :blocked
+    assert stored.active_job_id == nil
+    assert Repo.aggregate(Oban.Job, :count) == 0
+  end
+
+  test "ready-node transition and durable job ownership commit together" do
+    assert {:ok, project} = Projects.create_project(%{name: "下游原子入队"})
+    assert {:ok, run} = Workflow.create_run(project, "ready_v1", %{}, "ready-commit")
+    assert {:ok, root} = Workflow.add_node(run, "root", %{}, [])
+    assert {:ok, child} = Workflow.add_node(run, "child", %{}, ["root"])
+    assert {:ok, running} = Workflow.transition_node(root, :running)
+    assert {:ok, _succeeded} = Workflow.transition_node(running, :succeeded)
+
+    assert {:ok, [%{node: queued, job: job}]} =
+             Enqueue.ready_nodes(run.id, fn _node -> NodeJob end)
+
+    assert queued.id == child.id
+    assert queued.status == :queued
+    assert queued.active_job_id == job.id
+    assert Repo.get!(NodeRun, child.id).active_job_id == job.id
+  end
 end

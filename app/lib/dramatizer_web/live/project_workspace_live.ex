@@ -2436,14 +2436,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           shot_plan? and data.candidates != [] and data.selections != [] ->
             :ready
 
-          Enum.any?(data.attempts, &(&1.status in [:failed, :timed_out, :unknown_remote_state])) ->
-            :failed
-
-          Enum.any?(data.attempts, &(&1.status in [:prepared, :submitted])) ->
-            :loading
-
           true ->
-            :waiting_user
+            workflow_state(data, ["image_generation_v1"], :waiting_user)
         end,
       timeline:
         cond do
@@ -2481,22 +2475,88 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   end
 
   defp runs_state(data) do
+    current_runs = current_workflow_runs(data.runs, data.specs)
+    run_ids = MapSet.new(current_runs, & &1.id)
+    current_nodes = Enum.filter(data.nodes, &MapSet.member?(run_ids, &1.workflow_run_id))
+
     cond do
-      data.runs == [] and data.attempts == [] ->
+      current_runs == [] ->
         :empty
 
-      Enum.any?(data.nodes, &(&1.status == :failed)) or
-          Enum.any?(data.attempts, &(&1.status in [:failed, :timed_out, :unknown_remote_state])) ->
+      Enum.any?(current_nodes, &(&1.status == :failed)) or
+          Enum.any?(current_runs, &(&1.status == :failed)) ->
         :failed
 
-      Enum.any?(data.nodes, &(&1.status in [:queued, :running])) or
-          Enum.any?(data.attempts, &(&1.status in [:prepared, :submitted])) ->
+      Enum.any?(current_nodes, &(&1.status in [:queued, :running])) or
+          Enum.any?(current_runs, &(&1.status in [:pending, :running])) ->
         :loading
 
       true ->
         :ready
     end
   end
+
+  defp workflow_state(data, definition_keys, fallback) do
+    relevant_runs =
+      data.runs
+      |> Enum.filter(&(&1.definition_key in definition_keys))
+      |> current_workflow_runs(data.specs)
+
+    run_ids = MapSet.new(relevant_runs, & &1.id)
+    relevant_nodes = Enum.filter(data.nodes, &MapSet.member?(run_ids, &1.workflow_run_id))
+
+    cond do
+      Enum.any?(relevant_nodes, &(&1.status == :failed)) or
+          Enum.any?(relevant_runs, &(&1.status == :failed)) ->
+        :failed
+
+      Enum.any?(relevant_nodes, &(&1.status in [:queued, :running])) or
+          Enum.any?(relevant_runs, &(&1.status in [:pending, :running])) ->
+        :loading
+
+      true ->
+        fallback
+    end
+  end
+
+  defp current_workflow_runs(runs, specs) do
+    specs_by_id = Map.new(specs, &{&1.id, &1})
+
+    runs
+    |> Enum.group_by(&workflow_identity(&1, specs_by_id))
+    |> Enum.map(fn {_identity, versions} ->
+      Enum.max_by(versions, &{&1.inserted_at, &1.id})
+    end)
+  end
+
+  defp workflow_identity(%{definition_key: "image_generation_v1"} = run, specs) do
+    spec = Map.get(specs, run.input_snapshot["generation_spec_id"])
+    payload = if spec, do: spec.payload, else: %{}
+
+    slot =
+      payload["slot_key"] || payload["shot_id"] || payload["reference_slot"] ||
+        payload["object_id"] || (spec && spec.kind) || run.input_snapshot["generation_spec_id"]
+
+    {
+      run.definition_key,
+      run.input_snapshot["task_type"],
+      slot,
+      spec && spec.candidate_index,
+      spec && spec.formal
+    }
+  end
+
+  defp workflow_identity(%{definition_key: "structured_proposal_v1"} = run, _specs),
+    do: {run.definition_key, run.input_snapshot["task_type"]}
+
+  defp workflow_identity(%{definition_key: "whole_novel_analysis_v1"} = run, _specs),
+    do: {run.definition_key}
+
+  defp workflow_identity(%{definition_key: "timeline_render_v1"} = run, _specs),
+    do: {run.definition_key, run.input_snapshot["render_mode"]}
+
+  defp workflow_identity(run, _specs),
+    do: {run.definition_key, run.idempotency_key}
 
   defp latest_revision(revisions, kind), do: Enum.find(revisions, &(&1.kind == kind))
   defp drafts_for(drafts, kind), do: Enum.filter(drafts, &(&1.kind == kind))

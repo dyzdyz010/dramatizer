@@ -6,6 +6,7 @@ defmodule Dramatizer.Generation.PipelineTest do
   alias Dramatizer.Generation.{Attempt, GenerationSpec}
   alias Dramatizer.Generation.Jobs.GenerationNodeJob
   alias Dramatizer.Generation.Pipeline
+  alias Dramatizer.Execution.WorkerLifecycle
   alias Dramatizer.Projects
   alias Dramatizer.Quality.QualityReport
   alias Dramatizer.Repo
@@ -83,6 +84,76 @@ defmodule Dramatizer.Generation.PipelineTest do
     assert completed.result["output"]["schema_version"] == "narrative-draft-v2"
     assert Repo.get!(WorkflowRun, run.id).status == :succeeded
     assert Repo.aggregate(Attempt, :count) == 1
+  end
+
+  test "root job insertion failure rolls back the entire generation topology" do
+    project = project("图片入口回滚")
+    spec = image_spec(project)
+
+    assert {:error, %Ecto.Changeset{valid?: false}} =
+             Generation.enqueue_pipeline(project, spec, :shot_keyframe,
+               job_options: [priority: 99]
+             )
+
+    assert Repo.aggregate(WorkflowRun, :count) == 0
+    assert Repo.aggregate(NodeRun, :count) == 0
+    assert Repo.aggregate(Oban.Job, :count) == 0
+  end
+
+  test "a terminal root job replay repairs downstream advancement without provider work" do
+    project = project("终态推进修复")
+    spec = image_spec(project)
+    assert {:ok, run} = Generation.enqueue_pipeline(project, spec, :shot_keyframe)
+    root = nodes(run)["prompt_proposal"]
+    job = Repo.get!(Oban.Job, root.active_job_id)
+
+    assert {:ok, running} = WorkerLifecycle.start(root, job)
+
+    assert {:ok, _succeeded} =
+             WorkerLifecycle.succeed(running, job, %{
+               "provider_prompt" => "fixture",
+               "provider_prompt_hash" => String.duplicate("a", 64),
+               "provider_request_snapshot_id" => Ecto.UUID.generate(),
+               "attempt_id" => Ecto.UUID.generate()
+             })
+
+    assert nodes(run)["asset_generation"].status == :blocked
+    assert :ok = GenerationNodeJob.perform(job)
+
+    repaired = nodes(run)["asset_generation"]
+    assert repaired.status == :queued
+    assert is_integer(repaired.active_job_id)
+    assert Repo.get!(Oban.Job, repaired.active_job_id).worker == inspect(GenerationNodeJob)
+    assert Repo.aggregate(Attempt, :count) == 0
+  end
+
+  test "a provider exception after submission becomes unknown remote at attempt and node level" do
+    project = project("提交后异常")
+    spec = image_spec(project)
+    assert {:ok, run} = Generation.enqueue_pipeline(project, spec, :shot_keyframe)
+    root = nodes(run)["prompt_proposal"]
+    job = Repo.get!(Oban.Job, root.active_job_id)
+
+    executor = fn running_node, current_project ->
+      assert {:ok, _snapshot, prepared} =
+               Generation.prepare_attempt(spec, :image_prompt, current_project, %{
+                 node_run_id: running_node.id,
+                 task_override: %{adapter: "fake", credential_ref: "none", model: "fake-v1"},
+                 request_input: %{"input" => "fixture"}
+               })
+
+      assert {:ok, _submitted} = Generation.transition_attempt(prepared, :submitted)
+      raise "private provider payload"
+    end
+
+    assert :ok = GenerationNodeJob.perform(job, executor: executor)
+
+    assert Repo.one!(Attempt).status == :unknown_remote_state
+
+    assert %NodeRun{status: :failed, error_code: "unknown_remote_state"} =
+             Repo.get!(NodeRun, root.id)
+
+    assert Repo.get!(WorkflowRun, run.id).status == :failed
   end
 
   test "image pipeline runs proposal, asset generation, and both QC branches durably" do

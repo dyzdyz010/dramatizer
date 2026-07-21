@@ -8,9 +8,20 @@ defmodule Dramatizer.Quality.TechnicalQC do
   alias Dramatizer.Media.Worker
   alias Dramatizer.Quality
 
-  def run(%AssetVersion{} = asset, %GenerationSpec{} = spec) do
+  def run(%AssetVersion{} = asset, %GenerationSpec{} = spec, opts \\ []) do
+    probe_runner =
+      Keyword.get(opts, :probe, fn path -> Worker.run(:probe_image, %{"path" => path}) end)
+
+    probe = probe_runner.(Assets.absolute_path(asset))
+
+    case transient_probe_error(probe) do
+      :ok -> persist_report(asset, spec, probe)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp persist_report(asset, spec, probe) do
     integrity = Assets.verify(asset)
-    probe = Worker.run(:probe_image, %{"path" => Assets.absolute_path(asset)})
     observed = probe_value(probe)
     width = observed["width"]
     height = observed["height"]
@@ -68,6 +79,15 @@ defmodule Dramatizer.Quality.TechnicalQC do
         })
     })
   end
+
+  defp transient_probe_error({:error, %{code: "worker_timeout"}}),
+    do: {:error, :media_worker_timeout}
+
+  defp transient_probe_error({:error, %{code: code}})
+       when code in ["worker_unavailable", "worker_exit", "invalid_worker_response"],
+       do: {:error, :media_worker_unavailable}
+
+  defp transient_probe_error(_probe), do: :ok
 
   defp probe_value({:ok, value}), do: value
   defp probe_value({:error, _error}), do: %{}

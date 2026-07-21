@@ -49,7 +49,7 @@ defmodule Dramatizer.Execution.WorkerLifecycle do
     instrument(node_id, job, result, :started)
   end
 
-  def succeed(%NodeRun{id: node_id}, %Oban.Job{id: job_id} = job, result)
+  def succeed(%NodeRun{id: node_id}, %Oban.Job{id: job_id} = job, result, opts \\ [])
       when is_integer(job_id) and is_map(result) do
     outcome =
       Repo.transaction(fn ->
@@ -71,13 +71,16 @@ defmodule Dramatizer.Execution.WorkerLifecycle do
       end)
       |> unwrap_transaction()
 
-    instrument(node_id, job, outcome, :succeeded)
+    instrument(node_id, job, outcome, :succeeded, Keyword.get(opts, :notify, true))
   end
 
   def fail(%NodeRun{} = node, %Oban.Job{} = job, reason),
-    do: fail(node, job, reason, %{})
+    do: fail(node, job, reason, %{}, [])
 
-  def fail(%NodeRun{id: node_id}, %Oban.Job{id: job_id} = job, reason, details)
+  def fail(%NodeRun{} = node, %Oban.Job{} = job, reason, details),
+    do: fail(node, job, reason, details, [])
+
+  def fail(%NodeRun{id: node_id}, %Oban.Job{id: job_id} = job, reason, details, opts)
       when is_integer(job_id) and is_map(details) do
     outcome =
       Repo.transaction(fn ->
@@ -99,7 +102,7 @@ defmodule Dramatizer.Execution.WorkerLifecycle do
       end)
       |> unwrap_transaction()
 
-    instrument(node_id, job, outcome, :failed)
+    instrument(node_id, job, outcome, :failed, Keyword.get(opts, :notify, true))
   end
 
   defp fail_locked(node, job, {:retryable, code}, details)
@@ -158,7 +161,7 @@ defmodule Dramatizer.Execution.WorkerLifecycle do
   defp unwrap_transaction({:ok, result}), do: result
   defp unwrap_transaction({:error, reason}), do: {:error, reason}
 
-  defp instrument(node_id, job, outcome, event) do
+  defp instrument(node_id, job, outcome, event, notify? \\ true) do
     project_id = project_id(node_id)
 
     Logger.metadata(
@@ -169,7 +172,7 @@ defmodule Dramatizer.Execution.WorkerLifecycle do
     )
 
     Logger.debug("worker lifecycle transition", event: event, outcome: inspect(outcome))
-    notify(project_id, node_id, event_for(outcome, event))
+    if notify?, do: notify(project_id, node_id, event_for(outcome, event))
     outcome
   end
 

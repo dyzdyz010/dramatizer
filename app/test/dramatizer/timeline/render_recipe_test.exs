@@ -5,6 +5,7 @@ defmodule Dramatizer.Timeline.RenderRecipeTest do
   alias Dramatizer.Repo
   alias Dramatizer.TestFixtures.Timeline, as: Fixture
   alias Dramatizer.Timeline
+  alias Dramatizer.Timeline.Jobs.RenderJob
   alias Dramatizer.Timeline.{RenderRecipe, SRT}
   alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
 
@@ -81,5 +82,77 @@ defmodule Dramatizer.Timeline.RenderRecipeTest do
     assert same_node.id == node.id
     assert same_job.id == job.id
     assert Repo.aggregate(Oban.Job, :count) == 1
+  end
+
+  test "media job insertion failure rolls back the entire render topology", context do
+    assert {:ok, manifest} = RenderRecipe.preview(context.timeline)
+
+    assert {:error, %Ecto.Changeset{valid?: false}} =
+             Timeline.enqueue_render(manifest, job_options: [priority: 99])
+
+    assert Repo.aggregate(WorkflowRun, :count) == 0
+    assert Repo.aggregate(NodeRun, :count) == 0
+    assert Repo.aggregate(Oban.Job, :count) == 0
+  end
+
+  test "retryable render failures reset the manifest and node to one retryable aggregate",
+       context do
+    assert {:ok, manifest} = RenderRecipe.preview(context.timeline)
+
+    assert {:ok, %{workflow_run: run, node_run: node, job: job}} =
+             Timeline.enqueue_render(manifest)
+
+    renderer = fn current ->
+      current
+      |> Dramatizer.Timeline.RenderManifest.status_changeset(%{
+        status: :failed,
+        technical_qc: %{},
+        error_code: "temporary_file_lock"
+      })
+      |> Repo.update!()
+
+      {:error, :temporary_file_lock}
+    end
+
+    assert {:error, ":temporary_file_lock"} = RenderJob.perform(job, renderer: renderer)
+
+    assert %Dramatizer.Timeline.RenderManifest{status: :prepared, error_code: nil} =
+             Repo.get!(Dramatizer.Timeline.RenderManifest, manifest.id)
+
+    assert %NodeRun{status: :queued, error_code: "temporary_file_lock"} =
+             Repo.get!(NodeRun, node.id)
+
+    assert Repo.get!(WorkflowRun, run.id).status == :running
+  end
+
+  test "guarded render exceptions fail the manifest, node, and run together", context do
+    assert {:ok, manifest} = RenderRecipe.preview(context.timeline)
+
+    assert {:ok, %{workflow_run: run, node_run: node, job: job}} =
+             Timeline.enqueue_render(manifest)
+
+    renderer = fn current ->
+      current
+      |> Dramatizer.Timeline.RenderManifest.status_changeset(%{
+        status: :rendering,
+        technical_qc: %{},
+        error_code: nil
+      })
+      |> Repo.update!()
+
+      raise "private render payload"
+    end
+
+    assert :ok = RenderJob.perform(job, renderer: renderer)
+
+    assert %Dramatizer.Timeline.RenderManifest{
+             status: :failed,
+             error_code: "worker_exception"
+           } = Repo.get!(Dramatizer.Timeline.RenderManifest, manifest.id)
+
+    assert %NodeRun{status: :failed, error_code: "worker_exception"} =
+             Repo.get!(NodeRun, node.id)
+
+    assert Repo.get!(WorkflowRun, run.id).status == :failed
   end
 end

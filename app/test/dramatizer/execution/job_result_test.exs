@@ -5,6 +5,18 @@ defmodule Dramatizer.Execution.JobResultTest do
 
   test "classifies retryable infrastructure and provider failures" do
     assert JobResult.classify(:provider_timeout) == {:retryable, "provider_timeout"}
+
+    assert JobResult.classify(:provider_unavailable) ==
+             {:retryable, "provider_unavailable"}
+
+    assert JobResult.classify(:rate_limited) == {:retryable, "provider_rate_limited"}
+
+    assert JobResult.classify(:media_worker_unavailable) ==
+             {:retryable, "media_worker_unavailable"}
+
+    assert JobResult.classify(:media_worker_timeout) ==
+             {:retryable, "media_worker_timeout"}
+
     assert JobResult.classify({:http_status, 429}) == {:retryable, "provider_rate_limited"}
     assert JobResult.classify({:http_status, 503}) == {:retryable, "provider_unavailable"}
     assert JobResult.classify(:temporary_file_lock) == {:retryable, "temporary_file_lock"}

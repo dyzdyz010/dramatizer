@@ -1,10 +1,11 @@
 defmodule Dramatizer.Workflow.Enqueue do
-  @moduledoc "Atomically binds a durable NodeRun to one incomplete Oban job."
+  @moduledoc "Atomically binds durable NodeRuns to their incomplete Oban jobs."
 
   import Ecto.Query
 
   alias Dramatizer.Execution.Notifier
   alias Dramatizer.Repo
+  alias Dramatizer.Workflow
   alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
   alias Ecto.Multi
 
@@ -12,6 +13,7 @@ defmodule Dramatizer.Workflow.Enqueue do
 
   def node(%NodeRun{id: node_id}, worker, opts \\ []) when is_atom(worker) do
     job_opts = Keyword.get(opts, :job_options, [])
+    notify? = Keyword.get(opts, :notify, true)
 
     result =
       Multi.new()
@@ -33,10 +35,54 @@ defmodule Dramatizer.Workflow.Enqueue do
 
     case result do
       {:ok, %{owned_node: owned_node, job: job}} ->
-        notify(owned_node)
+        if notify?, do: notify(owned_node)
         {:ok, %{node: owned_node, job: job}}
 
       {:error, _operation, reason, _changes} ->
+        {:error, reason}
+    end
+  end
+
+  @doc "Transitions every ready child and inserts its job in one transaction."
+  def ready_nodes(workflow_run_id, worker_resolver, opts \\ [])
+      when is_function(worker_resolver, 1) do
+    transaction =
+      Repo.transaction(fn ->
+        blocked =
+          Repo.all(
+            from node in NodeRun,
+              where: node.workflow_run_id == ^workflow_run_id and node.status == :blocked,
+              lock: "FOR UPDATE"
+          )
+
+        Enum.reduce(blocked, [], fn blocked_node, executions ->
+          if ready?(blocked_node) do
+            with {:ok, queued} <- Workflow.transition_locked(blocked_node, :queued, %{}),
+                 {:ok, execution} <-
+                   node(queued, worker_resolver.(queued),
+                     job_options: Keyword.get(opts, :job_options, []),
+                     notify: false
+                   ) do
+              [execution | executions]
+            else
+              {:error, reason} -> Repo.rollback(reason)
+            end
+          else
+            executions
+          end
+        end)
+        |> Enum.reverse()
+      end)
+
+    case transaction do
+      {:ok, executions} ->
+        if Keyword.get(opts, :notify, true) do
+          Enum.each(executions, &notify(&1.node))
+        end
+
+        {:ok, executions}
+
+      {:error, reason} ->
         {:error, reason}
     end
   end
@@ -57,7 +103,22 @@ defmodule Dramatizer.Workflow.Enqueue do
     end
   end
 
-  defp notify(node) do
+  defp ready?(node) do
+    parents =
+      Repo.all(
+        from parent in NodeRun,
+          where:
+            parent.workflow_run_id == ^node.workflow_run_id and
+              parent.node_key in ^node.required_parent_keys,
+          select: {parent.node_key, parent.status}
+      )
+      |> Map.new()
+
+    Enum.all?(node.required_parent_keys, &(Map.get(parents, &1) == :succeeded))
+  end
+
+  @doc false
+  def notify(node) do
     project_id =
       Repo.one!(
         from run in WorkflowRun,

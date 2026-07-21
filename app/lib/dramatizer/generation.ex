@@ -7,6 +7,9 @@ defmodule Dramatizer.Generation do
   alias Dramatizer.Generation.{Attempt, ConfigResolver, GenerationSpec, ProviderRequestSnapshot}
   alias Dramatizer.Projects.Project
   alias Dramatizer.Repo
+  alias Dramatizer.Workflow.NodeRun
+
+  @guard_failures [:worker_exception, :worker_throw, :worker_exit]
 
   def enqueue_pipeline(%Project{} = project, %GenerationSpec{} = spec, task_type, opts \\ []),
     do: Dramatizer.Generation.Pipeline.enqueue(project, spec, task_type, opts)
@@ -183,6 +186,38 @@ defmodule Dramatizer.Generation do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  @doc false
+  def reconcile_guard_failure(%NodeRun{id: node_run_id}, reason, details)
+      when reason in @guard_failures and is_map(details) do
+    latest_submitted =
+      Repo.one(
+        from attempt in Attempt,
+          where: attempt.node_run_id == ^node_run_id and attempt.status == :submitted,
+          order_by: [desc: attempt.attempt_number, desc: attempt.inserted_at],
+          limit: 1
+      )
+
+    case latest_submitted do
+      %Attempt{} = attempt ->
+        case transition_attempt(attempt, :unknown_remote_state, %{
+               error_code: "unknown_remote_state",
+               error_message: "provider outcome is unknown after submitted worker interruption",
+               response_metadata: %{"failure_kind" => Atom.to_string(reason)}
+             }) do
+          {:ok, unknown} ->
+            {:unknown_remote_state, Map.put(details, "attempt_id", unknown.id)}
+
+          {:error, _transition_reason} ->
+            {reason, details}
+        end
+
+      nil ->
+        {reason, details}
+    end
+  end
+
+  def reconcile_guard_failure(%NodeRun{}, reason, details), do: {reason, details}
 
   def retry_attempt(%Attempt{status: status} = attempt) when status in [:failed, :timed_out] do
     Repo.transaction(fn ->

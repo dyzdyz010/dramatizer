@@ -98,7 +98,7 @@ defmodule Dramatizer.Generation.StructuredTextProposalTest do
 
     assert_receive :submitted
 
-    assert {:error, {:proposal_attempt_not_runnable, :unknown_remote_state}} =
+    assert {:error, :unknown_remote_state} =
              StructuredTextProposal.propose(
                project,
                :narrative_proposal,

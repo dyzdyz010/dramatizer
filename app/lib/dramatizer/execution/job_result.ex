@@ -5,8 +5,19 @@ defmodule Dramatizer.Execution.JobResult do
 
   def classify(reason)
 
-  def classify(reason) when reason in [:provider_timeout, :network_error, :temporary_file_lock],
-    do: {:retryable, Atom.to_string(reason)}
+  def classify(reason)
+      when reason in [
+             :provider_timeout,
+             :provider_unavailable,
+             :network_error,
+             :temporary_file_lock,
+             :media_worker_unavailable,
+             :media_worker_timeout,
+             :media_worker_failed
+           ],
+      do: {:retryable, Atom.to_string(reason)}
+
+  def classify(:rate_limited), do: {:retryable, "provider_rate_limited"}
 
   def classify({:http_status, 429}), do: {:retryable, "provider_rate_limited"}
 

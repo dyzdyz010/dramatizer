@@ -14,6 +14,7 @@ defmodule Dramatizer.Analysis.DAGTest do
   alias Dramatizer.Sources
   alias Dramatizer.Workflow
   alias Dramatizer.Workflow.NodeRun
+  alias Dramatizer.Workflow.WorkflowRun
 
   setup do
     previous = Application.fetch_env!(:dramatizer, :asset_store_root)
@@ -111,6 +112,23 @@ defmodule Dramatizer.Analysis.DAGTest do
              from(job in Oban.Job, where: job.worker == ^inspect(AnalysisNodeJob)),
              :count
            ) == 3
+  end
+
+  test "root job insertion failure rolls back the entire analysis topology", context do
+    assert {:error, %Ecto.Changeset{valid?: false}} =
+             Analysis.enqueue(context.project, [context.source.id], job_options: [priority: 99])
+
+    assert Repo.aggregate(
+             from(run in WorkflowRun,
+               where:
+                 run.project_id == ^context.project.id and
+                   run.definition_key == "whole_novel_analysis_v1"
+             ),
+             :count
+           ) == 0
+
+    assert Repo.aggregate(NodeRun, :count) == 0
+    assert Repo.aggregate(Oban.Job, :count) == 0
   end
 
   test "recursive Oban drain completes the six-node analysis and finalizes its snapshot",

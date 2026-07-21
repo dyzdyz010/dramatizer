@@ -1,7 +1,8 @@
 defmodule Dramatizer.Quality.Jobs.NodeRunner do
   @moduledoc false
 
-  alias Dramatizer.Execution.WorkerLifecycle
+  alias Dramatizer.Execution.{JobGuard, Notifier, WorkerLifecycle}
+  alias Dramatizer.Generation
   alias Dramatizer.Generation.Pipeline
   alias Dramatizer.Projects
   alias Dramatizer.Repo
@@ -12,7 +13,8 @@ defmodule Dramatizer.Quality.Jobs.NodeRunner do
     project = Projects.get_project!(project_id(node))
 
     case WorkerLifecycle.start(node, job) do
-      {:ok, running} -> execute(running, project, job)
+      {:ok, running} -> guarded_execute(running, project, job)
+      {:skip, :terminal} -> resume_terminal(node, project)
       {:skip, _reason} -> :ok
       {:error, reason} -> {:error, inspect(reason)}
     end
@@ -21,23 +23,114 @@ defmodule Dramatizer.Quality.Jobs.NodeRunner do
   defp execute(node, project, job) do
     case Pipeline.execute_node(node, project) do
       {:ok, result} ->
-        with {:ok, completed} <- WorkerLifecycle.succeed(node, job, result),
-             :ok <- Pipeline.advance(completed, project) do
+        commit_success(node, project, job, result)
+
+      {:error, reason, details} ->
+        commit_failure(node, project, job, reason, details)
+    end
+  end
+
+  defp guarded_execute(node, project, job) do
+    case JobGuard.protect(fn -> execute(node, project, job) end) do
+      {:ok, result} -> result
+      {:error, reason, details} -> commit_failure(node, project, job, reason, details)
+    end
+  end
+
+  defp commit_success(node, project, job, result) do
+    transaction =
+      Repo.transaction(fn ->
+        with {:ok, completed} <- WorkerLifecycle.succeed(node, job, result, notify: false),
+             :ok <- Pipeline.advance(completed, project, notify: false) do
           :ok
         else
           {:skip, _reason} -> :ok
-          {:error, reason} -> {:error, inspect(reason)}
+          {:error, reason} -> Repo.rollback(reason)
         end
+      end)
 
-      {:error, reason, details} ->
-        case WorkerLifecycle.fail(node, job, reason, details) do
-          {:retry, _queued, _delay} -> {:error, inspect(reason)}
-          {:failed, _failed} -> Pipeline.mark_failed(node.workflow_run_id, project, node.id)
-          {:cancelled, _cancelled} -> Pipeline.mark_failed(node.workflow_run_id, project, node.id)
-          {:skip, _reason} -> :ok
-          {:error, lifecycle_reason} -> {:error, inspect(lifecycle_reason)}
+    finish_transaction(transaction, project, node.id, :succeeded)
+  end
+
+  defp commit_failure(node, project, job, reason, details) do
+    transaction =
+      Repo.transaction(fn ->
+        {normalized_reason, normalized_details} =
+          Generation.reconcile_guard_failure(node, reason, details)
+
+        case WorkerLifecycle.fail(node, job, normalized_reason, normalized_details, notify: false) do
+          {:retry, _queued, _delay} ->
+            :retry
+
+          {terminal, _node} when terminal in [:failed, :cancelled] ->
+            case Pipeline.mark_failed(node.workflow_run_id, project, node.id, notify: false) do
+              :ok -> :terminal
+              {:error, failure_reason} -> Repo.rollback(failure_reason)
+            end
+
+          {:skip, _reason} ->
+            :skip
+
+          {:error, lifecycle_reason} ->
+            Repo.rollback(lifecycle_reason)
         end
+      end)
+
+    case transaction do
+      {:ok, :retry} ->
+        notify_after_commit(project, node.id, :queued)
+        {:error, inspect(reason)}
+
+      {:ok, :terminal} ->
+        notify_after_commit(project, node.id, :failed)
+        :ok
+
+      {:ok, :skip} ->
+        :ok
+
+      {:error, lifecycle_reason} ->
+        {:error, inspect(lifecycle_reason)}
     end
+  end
+
+  defp resume_terminal(%Dramatizer.Workflow.NodeRun{status: :succeeded} = node, project) do
+    transaction =
+      Repo.transaction(fn ->
+        case Pipeline.advance(node, project, notify: false) do
+          :ok -> :ok
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    finish_transaction(transaction, project, node.id, :succeeded)
+  end
+
+  defp resume_terminal(%Dramatizer.Workflow.NodeRun{status: status} = node, project)
+       when status in [:failed, :cancelled] do
+    transaction =
+      Repo.transaction(fn ->
+        case Pipeline.mark_failed(node.workflow_run_id, project, node.id, notify: false) do
+          :ok -> :ok
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    finish_transaction(transaction, project, node.id, :failed)
+  end
+
+  defp resume_terminal(%Dramatizer.Workflow.NodeRun{}, _project), do: :ok
+
+  defp finish_transaction({:ok, :ok}, project, node_id, status) do
+    notify_after_commit(project, node_id, status)
+    :ok
+  end
+
+  defp finish_transaction({:error, reason}, _project, _node_id, _status),
+    do: {:error, inspect(reason)}
+
+  defp notify_after_commit(project, node_id, status) do
+    Notifier.broadcast(project.id, :workflow, node_id, status)
+    Notifier.broadcast(project.id, :quality, node_id, status)
   end
 
   defp project_id(node) do

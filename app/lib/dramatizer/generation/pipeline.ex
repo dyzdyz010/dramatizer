@@ -47,18 +47,24 @@ defmodule Dramatizer.Generation.Pipeline do
       "options" => durable_options(opts)
     }
 
-    with {:ok, run} <-
-           Workflow.create_run(
-             project,
-             "image_generation_v1",
-             input,
-             "image-generation:#{spec.id}:#{task_type}:#{CanonicalJSON.hash(input)}"
-           ),
-         {:ok, nodes} <- add_nodes(run, @image_definition, input),
-         {:ok, running} <- ensure_running(run),
-         :ok <- enqueue_nodes(nodes, &(&1.node_key == "prompt_proposal")) do
-      {:ok, running}
-    end
+    Repo.transaction(fn ->
+      with {:ok, run} <-
+             Workflow.create_run(
+               project,
+               "image_generation_v1",
+               input,
+               "image-generation:#{spec.id}:#{task_type}:#{CanonicalJSON.hash(input)}"
+             ),
+           {:ok, nodes} <- add_nodes(run, @image_definition, input),
+           {:ok, running} <- ensure_running(run),
+           {:ok, executions} <-
+             enqueue_nodes(nodes, &(&1.node_key == "prompt_proposal"), opts) do
+        %{run: running, executions: executions}
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+    |> finish_enqueue()
   end
 
   def enqueue(%Project{}, %GenerationSpec{}, task_type, _opts),
@@ -74,18 +80,23 @@ defmodule Dramatizer.Generation.Pipeline do
       "options" => durable_options(opts)
     }
 
-    with {:ok, run} <-
-           Workflow.create_run(
-             project,
-             "structured_proposal_v1",
-             input,
-             "structured-proposal:#{task_type}:#{CanonicalJSON.hash(input)}"
-           ),
-         {:ok, node} <- Workflow.add_node(run, "structured_proposal", input, []),
-         {:ok, running} <- ensure_running(run),
-         :ok <- enqueue_nodes([node], fn _node -> true end) do
-      {:ok, running}
-    end
+    Repo.transaction(fn ->
+      with {:ok, run} <-
+             Workflow.create_run(
+               project,
+               "structured_proposal_v1",
+               input,
+               "structured-proposal:#{task_type}:#{CanonicalJSON.hash(input)}"
+             ),
+           {:ok, node} <- Workflow.add_node(run, "structured_proposal", input, []),
+           {:ok, running} <- ensure_running(run),
+           {:ok, executions} <- enqueue_nodes([node], fn _node -> true end, opts) do
+        %{run: running, executions: executions}
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+    |> finish_enqueue()
   end
 
   def enqueue_proposal(%Project{}, task_type, _authority, _opts),
@@ -95,7 +106,7 @@ defmodule Dramatizer.Generation.Pipeline do
     task_type = String.to_existing_atom(node.input_snapshot["task_type"])
     authority = node.input_snapshot["authority"]
 
-    case StructuredTextProposal.propose(project, task_type, authority) do
+    case StructuredTextProposal.propose(project, task_type, authority, node_run_id: node.id) do
       {:ok, proposal} ->
         with {:ok, draft_id} <- materialize_proposal(node, project, task_type, proposal.output) do
           {:ok,
@@ -118,7 +129,7 @@ defmodule Dramatizer.Generation.Pipeline do
     spec = generation_spec!(node)
     task_type = generation_task!(node)
 
-    case ImagePromptProposal.propose(project, task_type, spec.payload) do
+    case ImagePromptProposal.propose(project, task_type, spec.payload, node_run_id: node.id) do
       {:ok, proposal} ->
         {:ok,
          %{
@@ -142,6 +153,7 @@ defmodule Dramatizer.Generation.Pipeline do
       node
       |> generation_options(prompt)
       |> Keyword.put(:defer_quality, true)
+      |> Keyword.put(:node_run_id, node.id)
 
     case Orchestrator.generate(spec, task_type, project, options) do
       {:ok, generated} ->
@@ -184,6 +196,7 @@ defmodule Dramatizer.Generation.Pipeline do
         Quality.run_semantic_fixture(asset, spec)
       else
         SemanticQC.run(asset, spec, project,
+          node_run_id: node.id,
           selected_neighbors: selected_neighbors(options["selected_neighbor_ids"] || %{}),
           evaluation_key: options["evaluation_key"] || "default"
         )
@@ -206,8 +219,10 @@ defmodule Dramatizer.Generation.Pipeline do
   def execute_node(%NodeRun{node_key: node_key}, %Project{}),
     do: {:error, {:unsupported_generation_node, node_key}, %{}}
 
-  def advance(%NodeRun{} = node, %Project{} = project) do
-    with :ok <- enqueue_ready_nodes(node.workflow_run_id) do
+  def advance(%NodeRun{} = node, %Project{} = project, opts \\ []) do
+    notify? = Keyword.get(opts, :notify, true)
+
+    with :ok <- enqueue_ready_nodes(node.workflow_run_id, notify?) do
       nodes = Repo.all(from item in NodeRun, where: item.workflow_run_id == ^node.workflow_run_id)
 
       cond do
@@ -215,11 +230,13 @@ defmodule Dramatizer.Generation.Pipeline do
           run = Repo.get!(WorkflowRun, node.workflow_run_id)
 
           with {:ok, _run} <- Workflow.mark_run(run, :succeeded) do
-            Notifier.broadcast(project.id, :generation, run.id, :succeeded)
+            if notify?,
+              do: Notifier.broadcast(project.id, :generation, run.id, :succeeded),
+              else: :ok
           end
 
         Enum.any?(nodes, &(&1.status == :failed)) ->
-          mark_failed(node.workflow_run_id, project, node.id)
+          mark_failed(node.workflow_run_id, project, node.id, notify: notify?)
 
         true ->
           :ok
@@ -227,10 +244,14 @@ defmodule Dramatizer.Generation.Pipeline do
     end
   end
 
-  def mark_failed(run_id, project, resource_id) do
+  def mark_failed(run_id, project, resource_id, opts \\ []) do
     run = Repo.get!(WorkflowRun, run_id)
-    Workflow.mark_run(run, :failed)
-    Notifier.broadcast(project.id, :generation, resource_id, :failed)
+
+    with {:ok, _run} <- Workflow.mark_run(run, :failed) do
+      if Keyword.get(opts, :notify, true),
+        do: Notifier.broadcast(project.id, :generation, resource_id, :failed),
+        else: :ok
+    end
   end
 
   defp add_nodes(run, definition, input) do
@@ -246,31 +267,45 @@ defmodule Dramatizer.Generation.Pipeline do
   defp ensure_running(%WorkflowRun{status: :succeeded} = run), do: {:ok, run}
   defp ensure_running(%WorkflowRun{} = run), do: Workflow.mark_run(run, :running)
 
-  defp enqueue_nodes(nodes, predicate) do
+  defp enqueue_nodes(nodes, predicate, opts) do
     nodes
     |> Enum.filter(&(&1.status == :queued and predicate.(&1)))
-    |> Enum.reduce_while(:ok, fn node, :ok ->
-      case Enqueue.node(node, GenerationNodeJob) do
-        {:ok, _execution} -> {:cont, :ok}
+    |> Enum.reduce_while({:ok, []}, fn node, {:ok, executions} ->
+      case Enqueue.node(node, GenerationNodeJob,
+             job_options: Keyword.get(opts, :job_options, []),
+             notify: false
+           ) do
+        {:ok, execution} -> {:cont, {:ok, [execution | executions]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
     end)
-  end
-
-  defp enqueue_ready_nodes(run_id) do
-    run_id
-    |> Workflow.queue_ready_nodes()
-    |> Enum.reduce_while(:ok, fn node, :ok ->
-      case Enqueue.node(node, worker_for(node.node_key)) do
-        {:ok, _execution} -> {:cont, :ok}
-        {:error, reason} -> {:halt, {:error, reason}}
-      end
+    |> then(fn
+      {:ok, executions} -> {:ok, Enum.reverse(executions)}
+      error -> error
     end)
   end
 
-  defp worker_for("technical_qc"), do: Dramatizer.Quality.Jobs.TechnicalQCJob
-  defp worker_for("semantic_qc"), do: Dramatizer.Quality.Jobs.SemanticQCJob
-  defp worker_for(_node_key), do: GenerationNodeJob
+  defp enqueue_ready_nodes(run_id, notify?) do
+    case Enqueue.ready_nodes(run_id, &worker_for/1, notify: notify?) do
+      {:ok, _executions} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp worker_for(%NodeRun{node_key: "technical_qc"}),
+    do: Dramatizer.Quality.Jobs.TechnicalQCJob
+
+  defp worker_for(%NodeRun{node_key: "semantic_qc"}),
+    do: Dramatizer.Quality.Jobs.SemanticQCJob
+
+  defp worker_for(%NodeRun{}), do: GenerationNodeJob
+
+  defp finish_enqueue({:ok, %{run: run, executions: executions}}) do
+    Enum.each(executions, &Enqueue.notify(&1.node))
+    {:ok, run}
+  end
+
+  defp finish_enqueue({:error, reason}), do: {:error, reason}
 
   defp generation_spec!(node) do
     node.input_snapshot

@@ -22,12 +22,26 @@ defmodule Dramatizer.Analysis do
 
   def enqueue(project, source_revision_ids, opts \\ [])
 
-  def enqueue(%Project{} = project, source_revision_ids, _opts)
+  def enqueue(%Project{} = project, source_revision_ids, opts)
       when is_list(source_revision_ids) and source_revision_ids != [] do
-    with {:ok, run, nodes} <- DAG.start(project, source_revision_ids),
-         {:ok, running} <- ensure_running(run),
-         :ok <- enqueue_roots(nodes) do
-      {:ok, running}
+    result =
+      Repo.transaction(fn ->
+        with {:ok, run, nodes} <- DAG.start(project, source_revision_ids),
+             {:ok, running} <- ensure_running(run),
+             {:ok, executions} <- enqueue_roots(nodes, opts) do
+          %{run: running, executions: executions}
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    case result do
+      {:ok, %{run: run, executions: executions}} ->
+        Enum.each(executions, &Enqueue.notify(&1.node))
+        {:ok, run}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -340,14 +354,21 @@ defmodule Dramatizer.Analysis do
   defp public_error_code(:structured_validation_failed), do: :structured_validation_failed
   defp public_error_code(_provider_error), do: :provider_failed
 
-  defp enqueue_roots(nodes) do
+  defp enqueue_roots(nodes, opts) do
     nodes
     |> Enum.filter(&(&1.status == :queued and &1.required_parent_keys == []))
-    |> Enum.reduce_while(:ok, fn node, :ok ->
-      case Enqueue.node(node, AnalysisNodeJob) do
-        {:ok, _execution} -> {:cont, :ok}
+    |> Enum.reduce_while({:ok, []}, fn node, {:ok, executions} ->
+      case Enqueue.node(node, AnalysisNodeJob,
+             job_options: Keyword.get(opts, :job_options, []),
+             notify: false
+           ) do
+        {:ok, execution} -> {:cont, {:ok, [execution | executions]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
+    end)
+    |> then(fn
+      {:ok, executions} -> {:ok, Enum.reverse(executions)}
+      error -> error
     end)
   end
 

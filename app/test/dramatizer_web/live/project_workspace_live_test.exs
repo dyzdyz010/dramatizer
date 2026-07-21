@@ -16,6 +16,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
   alias Dramatizer.Sources.SourceRevision
   alias Dramatizer.Timeline.{Clip, RenderManifest, SubtitleCue, Timeline}
   alias Dramatizer.Workflow.InboxMessage
+  alias Dramatizer.Workflow
   alias Dramatizer.Repo
   alias DramatizerWeb.ProjectWorkspace.Subscription
   alias DramatizerWeb.Live.Components.RunPanel
@@ -95,6 +96,57 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert html =~ ~s(data-state="unknown")
     assert html =~ "远端状态未知"
     assert html =~ "禁止自动重提"
+  end
+
+  test "historical failed attempts do not override a recovered workflow state", %{
+    conn: conn,
+    project: project
+  } do
+    assert {:ok, spec} =
+             Dramatizer.Generation.create_spec(project, %{
+               kind: "shot_keyframe",
+               payload: %{"shot_id" => "history"}
+             })
+
+    assert {:ok, _snapshot, prepared} =
+             Dramatizer.Generation.prepare_attempt(spec, :shot_keyframe, project, %{
+               task_override: %{adapter: "fake", credential_ref: "none", model: "fake-v1"},
+               request_input: %{"generation_spec" => spec.payload}
+             })
+
+    assert {:ok, submitted} = Dramatizer.Generation.transition_attempt(prepared, :submitted)
+
+    assert {:ok, _failed_attempt} =
+             Dramatizer.Generation.transition_attempt(submitted, :failed, %{
+               error_code: "provider_rejected"
+             })
+
+    run_input = %{"generation_spec_id" => spec.id, "task_type" => "shot_keyframe"}
+
+    assert {:ok, old_run} =
+             Workflow.create_run(project, "image_generation_v1", run_input, "old-failed-history")
+
+    assert {:ok, old_node} = Workflow.add_node(old_run, "asset_generation", run_input, [])
+    assert {:ok, old_running_node} = Workflow.transition_node(old_node, :running)
+
+    assert {:ok, _old_failed_node} =
+             Workflow.transition_node(old_running_node, :failed, %{
+               error_code: "provider_rejected"
+             })
+
+    assert {:ok, _old_failed_run} = Workflow.mark_run(old_run, :failed)
+
+    assert {:ok, run} =
+             Workflow.create_run(project, "image_generation_v1", run_input, "recovered-history")
+
+    assert {:ok, node} = Workflow.add_node(run, "asset_generation", run_input, [])
+    assert {:ok, running_node} = Workflow.transition_node(node, :running)
+    assert {:ok, _succeeded_node} = Workflow.transition_node(running_node, :succeeded)
+    assert {:ok, _succeeded_run} = Workflow.mark_run(run, :succeeded)
+
+    {:ok, view, _html} = live(conn, "/projects/#{project.id}/runs")
+    assert has_element?(view, "[data-stage='runs'][data-state='ready']")
+    assert has_element?(view, "a[href$='/shots'][data-stage-state='waiting_user']")
   end
 
   test "workspace uses non-color state labels in the stage rail and canvas", %{
@@ -376,6 +428,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert Repo.aggregate(AssetVersion, :count) == 1
     assert Repo.aggregate(InboxMessage, :count) == 1
     assert Repo.aggregate(from(cost in CostEntry, where: cost.entry_type == :actual), :count) == 1
+    assert has_element?(runs, "[data-stage='runs'][data-state='ready']")
+    assert has_element?(runs, "a[href$='/shots'][data-stage-state='waiting_user']")
 
     runs |> element("button", "恢复并注入重复乱序回调") |> render_click()
 
