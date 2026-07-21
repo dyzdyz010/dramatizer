@@ -207,13 +207,10 @@ defmodule Dramatizer.Analysis do
             status: to_string(code)
           })
 
-          Generation.transition_attempt(submitted, :failed, %{
-            error_code: to_string(code),
-            error_message: to_string(code),
-            response_metadata: stringify(metadata)
-          })
+          {:error, normalized_code} =
+            Generation.record_submission_error(submitted, code, metadata, mode)
 
-          node_failure(code, snapshot_ids, [%{code: code, path: "/"}])
+          node_failure(normalized_code, snapshot_ids, [%{code: normalized_code, path: "/"}])
       end
     end
   end

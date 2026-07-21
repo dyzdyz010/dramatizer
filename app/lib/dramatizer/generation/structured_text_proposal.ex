@@ -85,13 +85,7 @@ defmodule Dramatizer.Generation.StructuredTextProposal do
             status: to_string(code)
           })
 
-          Generation.transition_attempt(submitted, :failed, %{
-            error_code: to_string(code),
-            error_message: to_string(code),
-            response_metadata: stringify(metadata)
-          })
-
-          {:error, code}
+          Generation.record_submission_error(submitted, code, metadata, mode)
       end
     end
   end

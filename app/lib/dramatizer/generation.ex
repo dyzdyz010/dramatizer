@@ -8,6 +8,12 @@ defmodule Dramatizer.Generation do
   alias Dramatizer.Projects.Project
   alias Dramatizer.Repo
 
+  def enqueue_pipeline(%Project{} = project, %GenerationSpec{} = spec, task_type, opts \\ []),
+    do: Dramatizer.Generation.Pipeline.enqueue(project, spec, task_type, opts)
+
+  def enqueue_proposal(%Project{} = project, task_type, authority, opts \\ []),
+    do: Dramatizer.Generation.Pipeline.enqueue_proposal(project, task_type, authority, opts)
+
   @secret_key ~r/(authorization|api[-_]?key|access[-_]?token|secret|password)/i
   @allowed_transitions %{
     prepared: [:submitted, :failed, :timed_out, :superseded],
@@ -156,6 +162,28 @@ defmodule Dramatizer.Generation do
     |> unwrap()
   end
 
+  def record_submission_error(%Attempt{} = attempt, code, metadata, provider_mode) do
+    {target, normalized_code, message} =
+      if provider_mode in [:openai, :resolved] and code == :provider_timeout do
+        {
+          :unknown_remote_state,
+          :unknown_remote_state,
+          "provider outcome is unknown after submission timeout"
+        }
+      else
+        {:failed, code, to_string(code)}
+      end
+
+    case transition_attempt(attempt, target, %{
+           error_code: to_string(normalized_code),
+           error_message: message,
+           response_metadata: stringify_keys(metadata)
+         }) do
+      {:ok, _attempt} -> {:error, normalized_code}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   def retry_attempt(%Attempt{status: status} = attempt) when status in [:failed, :timed_out] do
     Repo.transaction(fn ->
       Repo.one!(
@@ -233,6 +261,14 @@ defmodule Dramatizer.Generation do
   defp redact_message(message) do
     Regex.replace(~r/Bearer\s+\S+/i, to_string(message), "Bearer [REDACTED]")
   end
+
+  defp stringify_keys(value) when is_map(value),
+    do: Map.new(value, fn {key, nested} -> {to_string(key), stringify_keys(nested)} end)
+
+  defp stringify_keys(value) when is_list(value), do: Enum.map(value, &stringify_keys/1)
+  defp stringify_keys(value) when value in [true, false, nil], do: value
+  defp stringify_keys(value) when is_atom(value), do: Atom.to_string(value)
+  defp stringify_keys(value), do: value
 
   defp unwrap({:ok, value}), do: {:ok, value}
   defp unwrap({:error, reason}), do: {:error, reason}

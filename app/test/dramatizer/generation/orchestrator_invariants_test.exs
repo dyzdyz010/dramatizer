@@ -6,6 +6,7 @@ defmodule Dramatizer.Generation.OrchestratorInvariantsTest do
   alias Dramatizer.Costs
   alias Dramatizer.Costs.CostEntry
   alias Dramatizer.Generation
+  alias Dramatizer.Generation.Attempt
   alias Dramatizer.Generation.Orchestrator
   alias Dramatizer.Projects
   alias Dramatizer.Repo
@@ -102,6 +103,69 @@ defmodule Dramatizer.Generation.OrchestratorInvariantsTest do
     assert Enum.count(entries, &(&1.entry_type == :actual)) == 2
     assert Enum.any?(entries, &(&1.entry_type == :estimate and &1.amount_micros == 70))
     assert Enum.all?(Enum.filter(entries, &(&1.entry_type == :actual)), &is_nil(&1.amount_micros))
+  end
+
+  test "real provider timeout becomes unknown remote state and is never submitted twice" do
+    assert {:ok, project} = Projects.create_project(%{name: "Provider 未知远端状态"})
+
+    assert {:ok, spec} =
+             Generation.create_spec(project, %{
+               kind: "shot_keyframe",
+               payload: %{
+                 "shot_id" => "S002",
+                 "width" => 64,
+                 "height" => 96,
+                 "aspect_width" => 2,
+                 "aspect_height" => 3,
+                 "prompt" => "雾中码头"
+               }
+             })
+
+    prompt_submitter = fn _snapshot, _attempt ->
+      {:ok,
+       %{
+         output: %{"provider_prompt" => "AI 细化：雾中码头"},
+         external_request_id: "prompt-timeout-1",
+         request_id: "req-prompt-timeout-1",
+         usage: %{}
+       }}
+    end
+
+    owner = self()
+
+    image_submitter = fn _snapshot, _attempt ->
+      send(owner, :image_submitted)
+      {:error, :provider_timeout, %{reason: :socket_timeout}}
+    end
+
+    options = [
+      provider_mode: :openai,
+      prompt_submitter: prompt_submitter,
+      prompt_task_override: %{params: %{"estimated_cost_micros" => 0}},
+      image_submitter: image_submitter,
+      task_override: %{
+        params: %{
+          "estimated_cost_micros" => 0,
+          "size" => "64x96",
+          "quality" => "low"
+        }
+      }
+    ]
+
+    assert {:error, :unknown_remote_state} =
+             Orchestrator.generate(spec, :shot_keyframe, project, options)
+
+    assert_receive :image_submitted
+
+    assert {:error, {:attempt_not_runnable, :unknown_remote_state}} =
+             Orchestrator.generate(spec, :shot_keyframe, project, options)
+
+    refute_receive :image_submitted
+
+    assert Repo.aggregate(
+             from(attempt in Attempt, where: attempt.status == :unknown_remote_state),
+             :count
+           ) == 1
   end
 
   defp fake_png do

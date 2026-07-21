@@ -76,6 +76,40 @@ defmodule Dramatizer.Generation.StructuredTextProposalTest do
     assert Repo.one!(Attempt).error_code == "invalid_proposal_output"
   end
 
+  test "submission timeout is held as unknown remote state without an automatic retry", %{
+    project: project
+  } do
+    owner = self()
+
+    submitter = fn _snapshot, _attempt ->
+      send(owner, :submitted)
+      {:error, :provider_timeout, %{reason: :socket_timeout}}
+    end
+
+    options = [provider_mode: :openai, submitter: submitter]
+
+    assert {:error, :unknown_remote_state} =
+             StructuredTextProposal.propose(
+               project,
+               :narrative_proposal,
+               authority(),
+               options
+             )
+
+    assert_receive :submitted
+
+    assert {:error, {:proposal_attempt_not_runnable, :unknown_remote_state}} =
+             StructuredTextProposal.propose(
+               project,
+               :narrative_proposal,
+               authority(),
+               options
+             )
+
+    refute_receive :submitted
+    assert Repo.one!(Attempt).status == :unknown_remote_state
+  end
+
   defp authority do
     %{
       "episode" => %{"id" => "episode:001", "title" => "雨夜来信"},

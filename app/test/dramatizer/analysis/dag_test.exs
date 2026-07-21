@@ -143,6 +143,32 @@ defmodule Dramatizer.Analysis.DAGTest do
     assert Repo.aggregate(Attempt, :count) == attempt_count
   end
 
+  test "remote submission timeout is not retried as a new analysis Attempt", context do
+    assert {:ok, _run, nodes} = DAG.start(context.project, [context.source.id])
+    node = Enum.find(nodes, &(&1.node_key == "people_relations"))
+    assert {:ok, running} = Workflow.transition_node(node, :running)
+    owner = self()
+
+    submitter = fn _snapshot, _attempt ->
+      send(owner, :submitted)
+      {:error, :provider_timeout, %{reason: :socket_timeout}}
+    end
+
+    options = [submitter: submitter, task_override: %{params: %{"estimated_cost_micros" => 0}}]
+
+    assert {:error, :unknown_remote_state, _details} =
+             Analysis.perform_node(running, context.project, :openai, options)
+
+    assert_receive :submitted
+
+    assert {:error, :unknown_remote_state, _details} =
+             Analysis.perform_node(running, context.project, :openai, options)
+
+    refute_receive :submitted
+    assert Repo.aggregate(Attempt, :count) == 1
+    assert Repo.one!(Attempt).status == :unknown_remote_state
+  end
+
   test "structured repair creates at most three Attempts and finalizes an immutable snapshot",
        context do
     assert {:ok, run, nodes} = DAG.start(context.project, [context.source.id])

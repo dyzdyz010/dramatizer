@@ -65,12 +65,7 @@ defmodule Dramatizer.Generation.Orchestrator do
     config = ConfigResolver.resolve(task_type, project, task_override)
 
     with {:ok, reference_assets} <- resolve_reference_assets(spec, opts),
-         {:ok, proposal} <-
-           ImagePromptProposal.propose(project, task_type, spec.payload,
-             provider_mode: :openai,
-             submitter: Keyword.get(opts, :prompt_submitter, &OpenAIResponses.submit/2),
-             task_override: Keyword.get(opts, :prompt_task_override, %{})
-           ),
+         {:ok, proposal} <- resolve_prompt_proposal(project, task_type, spec, opts),
          {:ok, compilation} <-
            ImagePromptCompiler.compile(task_type, spec.payload,
              revision_ids: revision_ids(spec),
@@ -104,8 +99,8 @@ defmodule Dramatizer.Generation.Orchestrator do
              "chinese_authority" => compilation.chinese_authority,
              "chinese_authority_hash" => compilation.chinese_authority_hash,
              "provider_prompt_hash" => compilation.provider_prompt_hash,
-             "proposal_request_snapshot_id" => proposal.request_snapshot.id,
-             "proposal_attempt_id" => proposal.attempt.id,
+             "proposal_request_snapshot_id" => proposal.request_snapshot_id,
+             "proposal_attempt_id" => proposal.attempt_id,
              "proposal_prompt_hash" => proposal.provider_prompt_hash,
              "links" => compilation.links
            }
@@ -200,7 +195,7 @@ defmodule Dramatizer.Generation.Orchestrator do
                }
              },
              context.reference_assets,
-             []
+             quality_options(context)
            ) do
       {:ok, completed}
     else
@@ -282,7 +277,7 @@ defmodule Dramatizer.Generation.Orchestrator do
              "mask_asset_id" => spec.payload["mask_asset_id"],
              "formal" => spec.formal
            }),
-         {:ok, qc} <- Quality.after_finalize(asset, spec, project, qc_opts),
+         {:ok, qc} <- finalize_quality(asset, spec, project, qc_opts),
          {:ok, succeeded} <-
            Generation.transition_attempt(attempt, :succeeded, %{
              external_request_id: provider_result.external_request_id,
@@ -301,8 +296,17 @@ defmodule Dramatizer.Generation.Orchestrator do
 
   defp quality_options(context) do
     [reference_assets: context.reference_assets]
+    |> maybe_put_option(:defer_quality, Keyword.get(context.opts, :defer_quality))
     |> maybe_put_option(:selected_neighbors, Keyword.get(context.opts, :selected_neighbors))
     |> maybe_put_option(:evaluator, Keyword.get(context.opts, :semantic_evaluator))
+  end
+
+  defp finalize_quality(asset, spec, project, opts) do
+    if Keyword.get(opts, :defer_quality, false) do
+      {:ok, %{technical: nil, semantic: nil}}
+    else
+      Quality.after_finalize(asset, spec, project, Keyword.delete(opts, :defer_quality))
+    end
   end
 
   defp maybe_put_option(options, _key, nil), do: options
@@ -324,8 +328,9 @@ defmodule Dramatizer.Generation.Orchestrator do
     complete_error(attempt, :timed_out, :provider_timeout, metadata)
   end
 
-  defp complete_timeout(_project, attempt, metadata, :openai),
-    do: complete_error(attempt, :timed_out, :provider_timeout, metadata)
+  defp complete_timeout(_project, attempt, metadata, :openai) do
+    Generation.record_submission_error(attempt, :provider_timeout, metadata, :openai)
+  end
 
   defp record_callbacks(provider_result) do
     callbacks = max(1, provider_result.duplicate_callbacks)
@@ -425,6 +430,45 @@ defmodule Dramatizer.Generation.Orchestrator do
     end
   rescue
     Ecto.NoResultsError -> {:error, :reference_asset_not_found}
+  end
+
+  defp resolve_prompt_proposal(project, task_type, spec, opts) do
+    case Keyword.get(opts, :prompt_proposal) do
+      %{
+        provider_prompt: provider_prompt,
+        provider_prompt_hash: provider_prompt_hash,
+        request_snapshot_id: request_snapshot_id,
+        attempt_id: attempt_id
+      }
+      when is_binary(provider_prompt) and is_binary(provider_prompt_hash) and
+             is_binary(request_snapshot_id) and is_binary(attempt_id) ->
+        {:ok,
+         %{
+           provider_prompt: provider_prompt,
+           provider_prompt_hash: provider_prompt_hash,
+           request_snapshot_id: request_snapshot_id,
+           attempt_id: attempt_id
+         }}
+
+      nil ->
+        with {:ok, proposal} <-
+               ImagePromptProposal.propose(project, task_type, spec.payload,
+                 provider_mode: :openai,
+                 submitter: Keyword.get(opts, :prompt_submitter, &OpenAIResponses.submit/2),
+                 task_override: Keyword.get(opts, :prompt_task_override, %{})
+               ) do
+          {:ok,
+           %{
+             provider_prompt: proposal.provider_prompt,
+             provider_prompt_hash: proposal.provider_prompt_hash,
+             request_snapshot_id: proposal.request_snapshot.id,
+             attempt_id: proposal.attempt.id
+           }}
+        end
+
+      _invalid ->
+        {:error, :invalid_prompt_proposal}
+    end
   end
 
   defp revision_ids(spec) do

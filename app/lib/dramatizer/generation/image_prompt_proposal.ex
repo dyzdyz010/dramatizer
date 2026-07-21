@@ -93,13 +93,7 @@ defmodule Dramatizer.Generation.ImagePromptProposal do
         {:error, code, metadata} ->
           settle(reservation, nil, %{provider: Atom.to_string(mode), status: to_string(code)})
 
-          Generation.transition_attempt(submitted, :failed, %{
-            error_code: to_string(code),
-            error_message: to_string(code),
-            response_metadata: stringify(metadata)
-          })
-
-          {:error, code}
+          Generation.record_submission_error(submitted, code, metadata, mode)
       end
     end
   end
@@ -218,13 +212,4 @@ defmodule Dramatizer.Generation.ImagePromptProposal do
     |> Map.new()
     |> Map.merge(%{adapter: "fake", credential_ref: "none", model: "fake-text-v1"})
   end
-
-  defp stringify(value) when is_map(value) do
-    Map.new(value, fn {key, nested} -> {to_string(key), stringify(nested)} end)
-  end
-
-  defp stringify(value) when is_list(value), do: Enum.map(value, &stringify/1)
-  defp stringify(value) when value in [true, false, nil], do: value
-  defp stringify(value) when is_atom(value), do: Atom.to_string(value)
-  defp stringify(value), do: value
 end
