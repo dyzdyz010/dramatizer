@@ -3,9 +3,11 @@ defmodule Dramatizer.Timeline.RenderIntegrationTest do
 
   alias Dramatizer.Assets
   alias Dramatizer.Projects
+  alias Dramatizer.Repo
   alias Dramatizer.TestFixtures.Timeline, as: Fixture
   alias Dramatizer.Timeline
-  alias Dramatizer.Timeline.RenderRecipe
+  alias Dramatizer.Timeline.Jobs.RenderJob
+  alias Dramatizer.Timeline.{RenderManifest, RenderRecipe}
 
   @tag timeout: 180_000
   test "formal FFmpeg export is H.264 portrait video with AAC stereo silence and exact SRT",
@@ -67,7 +69,14 @@ defmodule Dramatizer.Timeline.RenderIntegrationTest do
 
     assert {:ok, version} = Timeline.freeze(timeline)
     assert {:ok, manifest} = RenderRecipe.formal(version)
-    assert {:ok, rendered} = Timeline.render(manifest)
+    assert {:ok, %{node_run: node, job: job}} = Timeline.enqueue_render(manifest)
+    assert Repo.get!(RenderManifest, manifest.id).status == :prepared
+    assert job.args == %{"node_run_id" => node.id}
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :media, with_safety: false)
+
+    rendered = Repo.get!(RenderManifest, manifest.id)
 
     assert rendered.status == :rendered
     mp4 = Assets.get_asset!(rendered.output_asset_id)
@@ -88,5 +97,17 @@ defmodule Dramatizer.Timeline.RenderIntegrationTest do
     assert probe["audio_is_silence"] == true
     assert abs(probe["duration_ms"] - version.duration_ms) <= 150
     assert rendered.input_manifest["subtitle_burn_in"] == true
+
+    output_asset_id = rendered.output_asset_id
+    srt_asset_id = rendered.srt_asset_id
+
+    assert {:ok, %{node_run: same_node, job: same_job}} = Timeline.enqueue_render(rendered)
+    assert same_node.id == node.id
+    assert same_job.id == job.id
+
+    assert :ok = RenderJob.perform(job)
+    replayed = Repo.get!(RenderManifest, manifest.id)
+    assert replayed.output_asset_id == output_asset_id
+    assert replayed.srt_asset_id == srt_asset_id
   end
 end

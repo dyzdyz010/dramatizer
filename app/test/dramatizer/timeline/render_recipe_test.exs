@@ -2,9 +2,11 @@ defmodule Dramatizer.Timeline.RenderRecipeTest do
   use Dramatizer.DataCase, async: false
 
   alias Dramatizer.Projects
+  alias Dramatizer.Repo
   alias Dramatizer.TestFixtures.Timeline, as: Fixture
   alias Dramatizer.Timeline
   alias Dramatizer.Timeline.{RenderRecipe, SRT}
+  alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
 
   setup do
     previous = Application.fetch_env!(:dramatizer, :asset_store_root)
@@ -50,5 +52,34 @@ defmodule Dramatizer.Timeline.RenderRecipeTest do
     refute formal.recipe_hash == preview1.recipe_hash
     assert formal.timeline_version_id == version.id
     assert formal.render_mode == :formal
+  end
+
+  test "enqueue_render persists one id-only media job without starting FFmpeg", context do
+    assert {:ok, manifest} = RenderRecipe.preview(context.timeline)
+    assert manifest.status == :prepared
+
+    assert {:ok, %{workflow_run: run, node_run: node, job: job}} =
+             Timeline.enqueue_render(manifest)
+
+    assert %WorkflowRun{status: :running} = run
+    assert %NodeRun{status: :queued} = node
+
+    assert node.input_snapshot == %{
+             "render_manifest_id" => manifest.id,
+             "render_mode" => "preview",
+             "recipe_hash" => manifest.recipe_hash
+           }
+
+    assert job.worker == "Dramatizer.Timeline.Jobs.RenderJob"
+    assert job.args == %{"node_run_id" => node.id}
+    assert Repo.get!(Dramatizer.Timeline.RenderManifest, manifest.id).status == :prepared
+
+    assert {:ok, %{workflow_run: same_run, node_run: same_node, job: same_job}} =
+             Timeline.enqueue_render(manifest)
+
+    assert same_run.id == run.id
+    assert same_node.id == node.id
+    assert same_job.id == job.id
+    assert Repo.aggregate(Oban.Job, :count) == 1
   end
 end

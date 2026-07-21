@@ -19,6 +19,11 @@ defmodule Dramatizer.Timeline do
     TimelineVersion
   }
 
+  alias Dramatizer.Timeline.Jobs.RenderJob
+  alias Dramatizer.Workflow
+  alias Dramatizer.Workflow.Enqueue
+  alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
+
   def create(
         %Project{id: project_id},
         %Revision{project_id: project_id, kind: :narrative} = narrative,
@@ -305,6 +310,35 @@ defmodule Dramatizer.Timeline do
     Dramatizer.Timeline.RenderRecipe.preview(timeline)
   end
 
+  def enqueue_render(%RenderManifest{} = manifest, opts \\ []) do
+    project = Repo.get!(Project, manifest.project_id)
+
+    input = %{
+      "render_manifest_id" => manifest.id,
+      "render_mode" => Atom.to_string(manifest.render_mode),
+      "recipe_hash" => manifest.recipe_hash
+    }
+
+    with {:ok, run} <-
+           Workflow.create_run(
+             project,
+             "timeline_render_v1",
+             input,
+             "timeline-render:#{manifest.render_mode}:#{manifest.recipe_hash}"
+           ),
+         {:ok, stored_node} <- Workflow.add_node(run, "render", input, []),
+         {:ok, node} <- queueable_render_node(stored_node),
+         {:ok, running} <- ensure_render_run(run, node),
+         {:ok, execution} <- enqueue_render_node(node, opts) do
+      {:ok,
+       %{
+         workflow_run: running,
+         node_run: execution.node,
+         job: execution.job
+       }}
+    end
+  end
+
   def render(%RenderManifest{} = manifest) do
     Dramatizer.Timeline.RenderRecipe.render(manifest)
   end
@@ -448,6 +482,36 @@ defmodule Dramatizer.Timeline do
          where: version.timeline_id == ^timeline_id,
          select: max(version.version)
      ) || 0) + 1
+  end
+
+  defp queueable_render_node(%NodeRun{status: :failed} = node), do: Workflow.retry_node(node)
+
+  defp queueable_render_node(%NodeRun{status: status} = node)
+       when status in [:queued, :running, :succeeded],
+       do: {:ok, node}
+
+  defp queueable_render_node(%NodeRun{status: status}),
+    do: {:error, {:render_node_not_queueable, status}}
+
+  defp ensure_render_run(%WorkflowRun{status: :succeeded} = run, %NodeRun{status: :succeeded}),
+    do: {:ok, run}
+
+  defp ensure_render_run(%WorkflowRun{} = run, _node), do: Workflow.mark_run(run, :running)
+
+  defp enqueue_render_node(%NodeRun{status: :succeeded} = node, _opts) do
+    job =
+      Repo.one!(
+        from job in Oban.Job,
+          where: fragment("?->>'node_run_id' = ?", job.args, ^node.id),
+          order_by: [desc: job.id],
+          limit: 1
+      )
+
+    {:ok, %{node: node, job: job}}
+  end
+
+  defp enqueue_render_node(%NodeRun{} = node, opts) do
+    Enqueue.node(node, RenderJob, job_options: Keyword.get(opts, :job_options, []))
   end
 
   defp stringify(value) when is_map(value) do
