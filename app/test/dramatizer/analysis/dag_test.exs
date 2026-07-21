@@ -5,6 +5,7 @@ defmodule Dramatizer.Analysis.DAGTest do
 
   alias Dramatizer.Analysis
   alias Dramatizer.Analysis.{AnalysisSnapshot, DAG}
+  alias Dramatizer.Analysis.Jobs.AnalysisNodeJob
   alias Dramatizer.Costs
   alias Dramatizer.Costs.CostEntry
   alias Dramatizer.Generation.Attempt
@@ -81,6 +82,65 @@ defmodule Dramatizer.Analysis.DAGTest do
 
     assert [%NodeRun{node_key: "entity_merge", status: :queued}] =
              Workflow.queue_ready_nodes(run.id)
+  end
+
+  test "enqueue persists three root jobs without running a provider", context do
+    assert {:ok, run} = Analysis.enqueue(context.project, [context.source.id])
+
+    nodes = Repo.all(from node in NodeRun, where: node.workflow_run_id == ^run.id)
+    roots = Enum.filter(nodes, &(&1.required_parent_keys == []))
+    descendants = Enum.reject(nodes, &(&1.required_parent_keys == []))
+
+    assert Enum.all?(roots, &(&1.status == :queued))
+    assert Enum.all?(roots, &(&1.worker == inspect(AnalysisNodeJob)))
+    assert Enum.all?(roots, &is_integer(&1.active_job_id))
+    assert Enum.all?(descendants, &(&1.status == :blocked))
+    assert Repo.aggregate(Attempt, :count) == 0
+    assert Repo.aggregate(AnalysisSnapshot, :count) == 0
+
+    jobs =
+      Repo.all(from job in Oban.Job, where: job.worker == ^inspect(AnalysisNodeJob))
+
+    assert length(jobs) == 3
+    assert Enum.all?(jobs, &(Map.keys(&1.args) == ["node_run_id"]))
+
+    assert {:ok, same_run} = Analysis.enqueue(context.project, [context.source.id])
+    assert same_run.id == run.id
+
+    assert Repo.aggregate(
+             from(job in Oban.Job, where: job.worker == ^inspect(AnalysisNodeJob)),
+             :count
+           ) == 3
+  end
+
+  test "recursive Oban drain completes the six-node analysis and finalizes its snapshot",
+       context do
+    assert {:ok, run} = Analysis.enqueue(context.project, [context.source.id])
+
+    assert %{failure: 0, snoozed: 0, success: 6} =
+             Oban.drain_queue(queue: :workflow, with_recursion: true, with_safety: false)
+
+    assert %AnalysisSnapshot{workflow_run_id: run_id} =
+             Repo.get_by!(AnalysisSnapshot, workflow_run_id: run.id)
+
+    assert run_id == run.id
+    assert Repo.get!(Dramatizer.Workflow.WorkflowRun, run.id).status == :succeeded
+
+    assert Repo.all(from node in NodeRun, where: node.workflow_run_id == ^run.id)
+           |> Enum.all?(&(&1.status == :succeeded))
+  end
+
+  test "worker retry reuses a succeeded provider attempt after a lifecycle crash", context do
+    assert {:ok, _run, nodes} = DAG.start(context.project, [context.source.id])
+    node = Enum.find(nodes, &(&1.node_key == "people_relations"))
+    assert {:ok, running} = Workflow.transition_node(node, :running)
+
+    assert {:ok, first_result} = Analysis.perform_node(running, context.project, :fake)
+    attempt_count = Repo.aggregate(Attempt, :count)
+
+    assert {:ok, recovered_result} = Analysis.perform_node(running, context.project, :fake)
+    assert recovered_result == first_result
+    assert Repo.aggregate(Attempt, :count) == attempt_count
   end
 
   test "structured repair creates at most three Attempts and finalizes an immutable snapshot",

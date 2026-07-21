@@ -74,8 +74,11 @@ defmodule Dramatizer.Execution.WorkerLifecycle do
     instrument(node_id, job, outcome, :succeeded)
   end
 
-  def fail(%NodeRun{id: node_id}, %Oban.Job{id: job_id} = job, reason)
-      when is_integer(job_id) do
+  def fail(%NodeRun{} = node, %Oban.Job{} = job, reason),
+    do: fail(node, job, reason, %{})
+
+  def fail(%NodeRun{id: node_id}, %Oban.Job{id: job_id} = job, reason, details)
+      when is_integer(job_id) and is_map(details) do
     outcome =
       Repo.transaction(fn ->
         current = lock_node(node_id)
@@ -91,7 +94,7 @@ defmodule Dramatizer.Execution.WorkerLifecycle do
             {:skip, {:not_running, current.status}}
 
           true ->
-            fail_locked(current, job, JobResult.classify(reason))
+            fail_locked(current, job, JobResult.classify(reason), details)
         end
       end)
       |> unwrap_transaction()
@@ -99,7 +102,8 @@ defmodule Dramatizer.Execution.WorkerLifecycle do
     instrument(node_id, job, outcome, :failed)
   end
 
-  defp fail_locked(node, job, {:retryable, code}) when job.attempt < job.max_attempts do
+  defp fail_locked(node, job, {:retryable, code}, details)
+       when job.attempt < job.max_attempts do
     delay_seconds = backoff(job.attempt)
 
     {:ok, queued} =
@@ -107,19 +111,22 @@ defmodule Dramatizer.Execution.WorkerLifecycle do
         error_code: code,
         active_job_id: job.id,
         lease_expires_at: nil,
-        next_retry_at: DateTime.add(DateTime.utc_now(), delay_seconds, :second)
+        next_retry_at: DateTime.add(DateTime.utc_now(), delay_seconds, :second),
+        result: details
       })
 
     {:retry, queued, delay_seconds}
   end
 
-  defp fail_locked(node, _job, {:cancelled, code}) do
-    {:ok, cancelled} = transition!(node, :cancelled, %{error_code: code})
+  defp fail_locked(node, _job, {:cancelled, code}, details) do
+    {:ok, cancelled} =
+      transition!(node, :cancelled, %{error_code: code, result: details})
+
     {:cancelled, cancelled}
   end
 
-  defp fail_locked(node, _job, {_classification, code}) do
-    {:ok, failed} = transition!(node, :failed, %{error_code: code})
+  defp fail_locked(node, _job, {_classification, code}, details) do
+    {:ok, failed} = transition!(node, :failed, %{error_code: code, result: details})
     {:failed, failed}
   end
 

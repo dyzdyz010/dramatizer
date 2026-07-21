@@ -73,6 +73,18 @@ defmodule Dramatizer.Execution.WorkerLifecycleTest do
     assert unknown.error_code == "unknown_remote_state"
   end
 
+  test "terminal failure preserves redacted domain result details", %{node: node} do
+    job = job(35, 1, 3)
+    assert {:ok, running} = WorkerLifecycle.start(node, job)
+
+    details = %{"provider_request_snapshot_ids" => [Ecto.UUID.generate()]}
+
+    assert {:failed, failed} =
+             WorkerLifecycle.fail(running, job, :invalid_proposal_output, details)
+
+    assert failed.result == details
+  end
+
   test "success is terminal and stale jobs cannot complete another job's node", %{node: node} do
     current_job = job(40, 1, 3)
     assert {:ok, running} = WorkerLifecycle.start(node, current_job)
