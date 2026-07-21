@@ -4,8 +4,17 @@ defmodule Dramatizer.WorkflowTest do
   alias Dramatizer.Projects
   alias Dramatizer.Repo
   alias Dramatizer.Workflow
+  alias Dramatizer.Workflow.Enqueue
   alias Dramatizer.Workflow.{InboxMessage, NodeRun, OutboxEvent, WorkflowRun}
   alias Dramatizer.Workflow.Jobs.NodeJob
+
+  defmodule InvalidWorker do
+    def new(_args, _opts) do
+      %Oban.Job{}
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.add_error(:args, "invalid fixture")
+    end
+  end
 
   test "required parents block descendants and terminal state cannot regress" do
     assert {:ok, project} = Projects.create_project(%{name: "工作流测试"})
@@ -78,5 +87,42 @@ defmodule Dramatizer.WorkflowTest do
 
     stored = Repo.get!(NodeRun, node.id)
     assert stored.input_snapshot == %{"fixed" => true}
+  end
+
+  test "node enqueue atomically assigns one unique job with id-only args" do
+    assert {:ok, project} = Projects.create_project(%{name: "原子入队"})
+    assert {:ok, run} = Workflow.create_run(project, "enqueue_v1", %{}, "enqueue-run")
+    assert {:ok, node} = Workflow.add_node(run, "root", %{"private" => "database"}, [])
+
+    assert {:ok, %{node: owned, job: job}} = Enqueue.node(node, NodeJob)
+    assert owned.active_job_id == job.id
+    assert owned.worker == inspect(NodeJob)
+    assert job.args == %{"node_run_id" => node.id}
+    refute Map.has_key?(job.args, "input_snapshot")
+
+    assert {:ok, %{node: duplicate, job: same_job}} = Enqueue.node(owned, NodeJob)
+    assert duplicate.active_job_id == job.id
+    assert same_job.id == job.id
+
+    incomplete = ~w(suspended available scheduled executing retryable)
+
+    assert Repo.aggregate(
+             from(item in Oban.Job,
+               where: item.worker == ^inspect(NodeJob) and item.state in ^incomplete
+             ),
+             :count
+           ) == 1
+  end
+
+  test "job insertion failure rolls back node ownership" do
+    assert {:ok, project} = Projects.create_project(%{name: "入队回滚"})
+    assert {:ok, run} = Workflow.create_run(project, "enqueue_v1", %{}, "rollback-run")
+    assert {:ok, node} = Workflow.add_node(run, "root", %{}, [])
+
+    assert {:error, %Ecto.Changeset{valid?: false}} = Enqueue.node(node, InvalidWorker)
+
+    stored = Repo.get!(NodeRun, node.id)
+    assert stored.active_job_id == nil
+    assert stored.worker == nil
   end
 end
