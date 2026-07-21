@@ -11,7 +11,7 @@ defmodule Dramatizer.Analysis.Validator do
       if schema_errors == [] do
         case normalize_after_schema(schema_value) do
           {:ok, normalized} ->
-            case domain_errors(normalized, opts) do
+            case domain_errors(normalized, Keyword.put(opts, :task_type, task_type)) do
               [] -> {:ok, normalized}
               errors -> {:error, errors}
             end
@@ -194,10 +194,16 @@ defmodule Dramatizer.Analysis.Validator do
   defp array_errors(_value, _schema, _path), do: []
 
   defp domain_errors(%{"items" => items}, opts) do
-    known_ids = items |> Enum.map(& &1["id"]) |> MapSet.new()
+    known_ids =
+      items
+      |> Enum.map(& &1["id"])
+      |> MapSet.new()
+      |> MapSet.union(opts |> Keyword.get(:known_reference_ids, []) |> MapSet.new())
+
     allowed_sources = opts |> Keyword.get(:source_revision_ids, []) |> MapSet.new()
 
     duplicate_errors(items) ++
+      task_errors(Keyword.get(opts, :task_type), items) ++
       Enum.flat_map(Enum.with_index(items), fn {item, index} ->
         item_path = "/items/#{index}"
 
@@ -205,6 +211,14 @@ defmodule Dramatizer.Analysis.Validator do
           reference_errors(item, item_path, known_ids)
       end)
   end
+
+  defp task_errors(:episode_candidates, items) do
+    if Enum.any?(items, &(&1["kind"] == "episode")),
+      do: [],
+      else: [error(:missing_episode_item, "/items")]
+  end
+
+  defp task_errors(_task_type, _items), do: []
 
   defp duplicate_errors(items) do
     items

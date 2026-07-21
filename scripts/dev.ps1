@@ -32,6 +32,13 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 $port = if ($env:PORT) { [int]$env:PORT } else { 4000 }
 $provider = if ($env:DRAMATIZER_PROVIDER) { $env:DRAMATIZER_PROVIDER } else { "fake" }
 
+if ($provider -notin @("fake", "openai")) {
+    throw "DRAMATIZER_PROVIDER must be 'fake' or 'openai'; got '$provider'. Refusing to fall back to fake silently."
+}
+if ($provider -eq "openai" -and [string]::IsNullOrWhiteSpace($env:OPENAI_API_KEY)) {
+    throw "DRAMATIZER_PROVIDER=openai requires OPENAI_API_KEY in .env. Refusing to fall back to fake silently."
+}
+
 Push-Location (Join-Path $repoRoot "app")
 try {
     mix.bat ecto.migrate

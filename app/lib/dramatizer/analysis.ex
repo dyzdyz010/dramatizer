@@ -155,7 +155,8 @@ defmodule Dramatizer.Analysis do
     output = provider_result.output
 
     case Validator.validate(String.to_existing_atom(node.node_key), output,
-           source_revision_ids: node.input_snapshot["source_revision_ids"]
+           source_revision_ids: node.input_snapshot["source_revision_ids"],
+           known_reference_ids: succeeded_item_ids(node)
          ) do
       {:ok, validated} ->
         {:ok, _succeeded_attempt} =
@@ -256,6 +257,18 @@ defmodule Dramatizer.Analysis do
     appendix = Projects.current_prompt_appendix(project, task_type)
     {:ok, prompt} = Composer.compose(task_type, appendix, %{input_json: input_json})
     prompt
+  end
+
+  defp succeeded_item_ids(node) do
+    Repo.all(
+      from parent in NodeRun,
+        where:
+          parent.workflow_run_id == ^node.workflow_run_id and
+            parent.status == :succeeded,
+        select: parent.result
+    )
+    |> Enum.flat_map(&(get_in(&1, ["output", "items"]) || []))
+    |> Enum.map(& &1["id"])
   end
 
   defp request_text(prompt, nil, []), do: prompt

@@ -41,6 +41,38 @@ defmodule Dramatizer.Analysis.ValidatorTest do
     assert %{code: :invalid_range, path: "/items/0/locators/0"} in range_errors
   end
 
+  test "cross-node references resolve through known_reference_ids while unknown ids still fail" do
+    conflict = %{
+      "items" => [
+        item("conflict:c1", "inferred", [locator(0, 2)], ["person:p1", "event:e9"])
+      ]
+    }
+
+    assert {:ok, _validated} =
+             Validator.validate(:conflict_check, conflict,
+               source_revision_ids: [@source_id],
+               known_reference_ids: ["person:p1", "event:e9"]
+             )
+
+    assert {:error, errors} =
+             Validator.validate(:conflict_check, conflict,
+               source_revision_ids: [@source_id],
+               known_reference_ids: ["person:p1"]
+             )
+
+    assert %{code: :dangling_reference, path: "/items/0/references/1"} in errors
+  end
+
+  test "episode_candidates output must contain at least one episode-kind item" do
+    without_episode = %{"items" => [item("note:n1", "creative", [])]}
+
+    assert {:error, errors} = Validator.validate(:episode_candidates, without_episode)
+    assert %{code: :missing_episode_item, path: "/items"} in errors
+
+    with_episode = %{"items" => [item("episode:e1", "creative", [])]}
+    assert {:ok, _validated} = Validator.validate(:episode_candidates, with_episode)
+  end
+
   test "schema rejects unknown fields before domain validation" do
     invalid = %{"items" => [Map.put(item("person:p1", "creative", []), "invented", true)]}
     assert {:error, [first | _]} = Validator.validate(:people_relations, invalid)

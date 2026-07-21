@@ -4,6 +4,7 @@ defmodule Dramatizer.Generation.Adapters.OpenAIImages do
   @behaviour Dramatizer.Generation.Adapter
 
   alias Dramatizer.Assets
+  alias Dramatizer.Generation.Adapters.ProxyOptions
   alias Dramatizer.Generation.{Attempt, ProviderRequestSnapshot}
 
   @default_base_url "https://api.openai.com"
@@ -25,6 +26,7 @@ defmodule Dramatizer.Generation.Adapters.OpenAIImages do
 
       request_options =
         common
+        |> Keyword.merge(ProxyOptions.options())
         |> Keyword.merge(request.options)
         |> Keyword.merge(Keyword.drop(opts, [:base_url, :receive_timeout]))
 

@@ -9,8 +9,16 @@ import Config
 
 provider_mode =
   case System.get_env("DRAMATIZER_PROVIDER", "fake") do
-    "openai" -> :openai
-    _ -> :fake
+    "openai" ->
+      :openai
+
+    "fake" ->
+      :fake
+
+    other ->
+      raise ArgumentError,
+            "DRAMATIZER_PROVIDER must be \"fake\" or \"openai\"; got #{inspect(other)}. " <>
+              "Refusing to fall back to fake silently."
   end
 
 local_python =

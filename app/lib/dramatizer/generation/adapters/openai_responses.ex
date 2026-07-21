@@ -3,6 +3,7 @@ defmodule Dramatizer.Generation.Adapters.OpenAIResponses do
 
   @behaviour Dramatizer.Generation.Adapter
 
+  alias Dramatizer.Generation.Adapters.ProxyOptions
   alias Dramatizer.Generation.{Attempt, ProviderRequestSnapshot}
 
   @default_base_url "https://api.openai.com"
@@ -42,6 +43,7 @@ defmodule Dramatizer.Generation.Adapters.OpenAIResponses do
           retry: false,
           receive_timeout: Keyword.get(opts, :receive_timeout, @default_timeout)
         ]
+        |> Keyword.merge(ProxyOptions.options())
         |> Keyword.merge(Keyword.drop(opts, [:base_url, :receive_timeout]))
 
       case Req.post(base_url <> "/v1/responses", request_options) do
