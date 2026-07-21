@@ -1,8 +1,6 @@
 defmodule Dramatizer.Acceptance.SourceAnalysisTest do
   use Dramatizer.DataCase, async: false
 
-  import Ecto.Query
-
   alias Dramatizer.Analysis
   alias Dramatizer.Analysis.DAG
   alias Dramatizer.Generation.Attempt
@@ -84,7 +82,13 @@ defmodule Dramatizer.Acceptance.SourceAnalysisTest do
     assert Repo.aggregate(Attempt, :count) == 3
 
     errors =
-      Repo.all(from attempt in Attempt, order_by: [asc: attempt.attempt_number])
+      succeeded.result["provider_request_snapshot_ids"]
+      |> Enum.map(fn snapshot_id ->
+        Repo.get_by!(Attempt,
+          provider_request_snapshot_id: snapshot_id,
+          attempt_number: 1
+        )
+      end)
       |> Enum.map(&get_in(&1.response_metadata, ["validation_errors"]))
 
     assert get_in(Enum.at(errors, 0), [Access.at(0), "path"]) == "/"
