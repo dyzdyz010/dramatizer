@@ -206,7 +206,15 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
               <li>不冻结 TimelineVersion</li>
               <li>可继续编辑</li>
             </ul>
-            <button type="button" class="btn btn-soft" phx-click="preview-timeline">生成预览</button>
+            <button
+              type="button"
+              class="btn btn-soft"
+              phx-click="preview-timeline"
+              phx-disable-with="正在入队…"
+              disabled={render_active?(@renders, :preview)}
+            >
+              生成预览
+            </button>
           </article>
           <article class="render-path formal-path" data-render-path="formal">
             <div>
@@ -219,7 +227,15 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
               <li>字幕时间与样式冻结</li>
               <li>1080×1920 正式输出</li>
             </ul>
-            <button type="button" class="btn btn-primary" phx-click="freeze-timeline">冻结并正式导出</button>
+            <button
+              type="button"
+              class="btn btn-primary"
+              phx-click="freeze-timeline"
+              phx-disable-with="正在冻结并入队…"
+              disabled={render_active?(@renders, :formal)}
+            >
+              冻结并正式导出
+            </button>
           </article>
         </div>
 
@@ -273,5 +289,10 @@ defmodule DramatizerWeb.Live.Components.TimelineEditor do
   defp render_state(:rendered), do: :ready
   defp render_state(:failed), do: :failed
   defp render_state(:rendering), do: :loading
+  defp render_state(:prepared), do: :queued
   defp render_state(_), do: :waiting_user
+
+  defp render_active?(renders, mode) do
+    Enum.any?(renders, &(&1.render_mode == mode and &1.status in [:prepared, :rendering]))
+  end
 end

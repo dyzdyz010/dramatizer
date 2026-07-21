@@ -17,6 +17,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
   alias Dramatizer.Timeline.{Clip, RenderManifest, SubtitleCue, Timeline}
   alias Dramatizer.Workflow.InboxMessage
   alias Dramatizer.Repo
+  alias DramatizerWeb.ProjectWorkspace.Subscription
+  alias DramatizerWeb.Live.Components.RunPanel
 
   setup do
     previous = Application.fetch_env!(:dramatizer, :asset_store_root)
@@ -52,6 +54,47 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
       assert has_element?(view, "[data-stage='#{stage}'][data-state='#{state}']")
       assert has_element?(view, "nav[aria-label='制作阶段']")
     end
+  end
+
+  test "execution notifications route only to their affected workspace slices" do
+    assert Subscription.slice_for(%{resource: :analysis}) == :analysis
+    assert Subscription.slice_for(%{resource: :generation}) == :generation
+    assert Subscription.slice_for(%{resource: :quality}) == :generation
+    assert Subscription.slice_for(%{resource: :timeline}) == :timeline
+    assert Subscription.slice_for(%{resource: :workflow}) == :execution
+    assert Subscription.slice_for(%{resource: :unexpected}) == :ignore
+  end
+
+  test "run center distinguishes queued work from unknown remote outcomes" do
+    html =
+      render_component(&RunPanel.run_panel/1,
+        runs: [
+          %{
+            status: :pending,
+            definition_key: "image_generation_v1",
+            graph_epoch: 1,
+            started_at: nil,
+            completed_at: nil
+          }
+        ],
+        attempts: [
+          %{
+            status: :unknown_remote_state,
+            task_type: "shot_keyframe",
+            adapter: "openai",
+            model: "gpt-image-2",
+            attempt_number: 1,
+            spec_id: Ecto.UUID.generate(),
+            error_code: "unknown_remote_state"
+          }
+        ],
+        costs: []
+      )
+
+    assert html =~ ~s(data-state="queued")
+    assert html =~ ~s(data-state="unknown")
+    assert html =~ "远端状态未知"
+    assert html =~ "禁止自动重提"
   end
 
   test "workspace uses non-color state labels in the stage rail and canvas", %{
@@ -146,10 +189,11 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert render(runs) =~ "网页制作流·修订"
   end
 
-  test "direct LiveView text upload is parsed, automatically analyzed, and routed to review", %{
-    conn: conn,
-    project: project
-  } do
+  test "direct LiveView text upload queues analysis, survives remount, and refreshes on PubSub",
+       %{
+         conn: conn,
+         project: project
+       } do
     {:ok, view, _html} = live(conn, "/projects/#{project.id}/source")
 
     upload =
@@ -163,7 +207,19 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert_patch(view, "/projects/#{project.id}/analysis")
     assert render(view) =~ "分析审阅"
     assert Repo.get_by!(SourceRevision, project_id: project.id).character_count > 0
+    refute Repo.get_by(AnalysisSnapshot, project_id: project.id)
+    assert render(view) =~ "已加入队列"
+    assert Repo.aggregate(Oban.Job, :count) == 3
+
+    {:ok, remounted, _html} = live(conn, "/projects/#{project.id}/analysis")
+    assert has_element?(remounted, "[data-stage='analysis'][data-state='loading']")
+    assert has_element?(remounted, ".dag-node [data-state='queued']")
+
+    assert %{failure: 0, snoozed: 0, success: 6} =
+             Oban.drain_queue(queue: :workflow, with_recursion: true, with_safety: false)
+
     assert Repo.get_by!(AnalysisSnapshot, project_id: project.id)
+    assert has_element?(remounted, "[data-stage='analysis'][data-state='ready']")
   end
 
   test "project settings expose the provider and typed model controls without JSON", %{
@@ -218,6 +274,9 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     render_upload(upload, "story.md")
     source_view |> form("#source-upload-form") |> render_submit()
 
+    assert %{failure: 0, snoozed: 0, success: 6} =
+             Oban.drain_queue(queue: :workflow, with_recursion: true, with_safety: false)
+
     {:ok, analysis, _html} = live(conn, "/projects/#{project.id}/analysis")
     assert has_element?(analysis, "[data-stage='analysis'][data-state='ready']")
     assert has_element?(analysis, ".dag-node [data-state='ready']")
@@ -229,7 +288,33 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert html =~ "雨夜来信"
     assert has_element?(episodes, "button[phx-click='select-episode']")
 
-    episodes |> element("button[phx-click='select-episode']") |> render_click()
+    render_click(episodes, "select-episode", %{"candidate-id" => "episode:001"})
+    refute Repo.get_by(Draft, project_id: project.id, kind: :narrative, status: :editing)
+    assert render(episodes) =~ "已加入队列"
+
+    assert Repo.aggregate(
+             from(job in Oban.Job,
+               where:
+                 job.worker == "Dramatizer.Generation.Jobs.GenerationNodeJob" and
+                   job.state in ["available", "scheduled", "executing", "retryable"]
+             ),
+             :count
+           ) == 1
+
+    render_click(episodes, "select-episode", %{"candidate-id" => "episode:001"})
+
+    assert Repo.aggregate(
+             from(job in Oban.Job,
+               where:
+                 job.worker == "Dramatizer.Generation.Jobs.GenerationNodeJob" and
+                   job.state in ["available", "scheduled", "executing", "retryable"]
+             ),
+             :count
+           ) == 1
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
+
     html = render(episodes)
     assert html =~ "分集概览"
     assert html =~ "Scene"
@@ -239,6 +324,15 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
 
     narrative = Repo.get_by!(Draft, project_id: project.id, kind: :narrative, status: :editing)
     episodes |> element("button[phx-value-id='#{narrative.id}']", "确认并冻结") |> render_click()
+
+    refute Repo.get_by(Draft,
+             project_id: project.id,
+             kind: :visual_design,
+             status: :editing
+           )
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
 
     assert Repo.get_by!(Draft,
              project_id: project.id,
@@ -261,17 +355,34 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
   } do
     {:ok, runs, _html} = live(conn, "/projects/#{project.id}/runs")
     runs |> element("button", "注入一次 Fake 失败") |> render_click()
-    assert Repo.aggregate(Attempt, :count) == 1
-    assert Repo.one!(from attempt in Attempt, select: attempt.status) == :failed
+    assert Repo.aggregate(Attempt, :count) == 0
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
+
+    assert Repo.one!(
+             from attempt in Attempt,
+               join: request in assoc(attempt, :provider_request_snapshot),
+               where: request.task_type == "shot_keyframe",
+               select: attempt.status
+           ) == :failed
 
     runs |> element("button", "恢复并注入重复乱序回调") |> render_click()
-    assert Repo.aggregate(Attempt, :count) == 2
+    drain_generation_pipeline()
+    assert Repo.aggregate(Attempt, :count) == 3
     assert Repo.aggregate(AssetVersion, :count) == 1
     assert Repo.aggregate(InboxMessage, :count) == 1
     assert Repo.aggregate(from(cost in CostEntry, where: cost.entry_type == :actual), :count) == 1
 
     runs |> element("button", "恢复并注入重复乱序回调") |> render_click()
-    assert Repo.aggregate(Attempt, :count) == 2
+
+    assert %{failure: 0, snoozed: 0, success: 0} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
+
+    assert Repo.aggregate(Attempt, :count) == 3
     assert Repo.aggregate(AssetVersion, :count) == 1
     assert Repo.aggregate(from(cost in CostEntry, where: cost.entry_type == :actual), :count) == 1
   end
@@ -283,18 +394,35 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     upload_text(source, "reference-story.txt", "林夏在雨夜车站打开一封匿名信。")
 
     {:ok, analysis, _html} = live(conn, "/projects/#{project.id}/analysis")
-    analysis |> element("button", "启动全文分析") |> render_click()
+    render_click(analysis, "start-analysis", %{})
+
+    assert %{failure: 0, snoozed: 0, success: 6} =
+             Oban.drain_queue(queue: :workflow, with_recursion: true, with_safety: false)
 
     {:ok, episodes, _html} = live(conn, "/projects/#{project.id}/episodes")
     episodes |> element("button[phx-click='select-episode']") |> render_click()
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
+
     narrative = Repo.get_by!(Draft, project_id: project.id, kind: :narrative, status: :editing)
     episodes |> element("button[phx-value-id='#{narrative.id}']", "确认并冻结") |> render_click()
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
 
     {:ok, visuals, _html} = live(conn, "/projects/#{project.id}/visuals")
 
     visual = Repo.get_by!(Draft, project_id: project.id, kind: :visual_design, status: :editing)
     visuals |> element("button[phx-value-id='#{visual.id}']", "确认并冻结") |> render_click()
     visuals |> element("button", "AI 生成参考候选") |> render_click()
+
+    refute Repo.exists?(
+             from asset in AssetVersion,
+               where: asset.project_id == ^project.id and asset.kind == "reference_image"
+           )
+
+    drain_generation_pipeline()
 
     required_slots =
       for object <- visual.payload["objects"],
@@ -348,6 +476,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     |> form("#edit-candidate-#{parent.id}", edit: %{instruction: "信封边缘增加雨水浸湿痕迹"})
     |> render_submit()
 
+    drain_generation_pipeline()
+
     child =
       Repo.one!(
         from asset in AssetVersion,
@@ -370,12 +500,22 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     upload_text(source, "novel.txt", "雨夜里，林夏收到一封匿名信。")
 
     {:ok, analysis, _html} = live(conn, "/projects/#{project.id}/analysis")
-    analysis |> element("button", "启动全文分析") |> render_click()
+    render_click(analysis, "start-analysis", %{})
+
+    assert %{failure: 0, snoozed: 0, success: 6} =
+             Oban.drain_queue(queue: :workflow, with_recursion: true, with_safety: false)
 
     {:ok, episodes, _html} = live(conn, "/projects/#{project.id}/episodes")
     episodes |> element("button[phx-click='select-episode']") |> render_click()
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
+
     narrative = Repo.get_by!(Draft, project_id: project.id, kind: :narrative, status: :editing)
     episodes |> element("button[phx-value-id='#{narrative.id}']", "确认并冻结") |> render_click()
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
 
     {:ok, visuals, _html} = live(conn, "/projects/#{project.id}/visuals")
     visual = Repo.get_by!(Draft, project_id: project.id, kind: :visual_design, status: :editing)
@@ -415,6 +555,9 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
 
     visuals |> element("button[phx-value-id='#{reference.id}']", "确认并冻结") |> render_click()
 
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :generation, with_safety: false)
+
     assert Repo.get_by!(Draft, project_id: project.id, kind: :shot_plan, status: :editing)
 
     {:ok, shots, shot_html} = live(conn, "/projects/#{project.id}/shots")
@@ -426,6 +569,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     shots |> element("button[phx-value-id='#{shot_plan.id}']", "确认并冻结") |> render_click()
     shots |> element("button", "编译冻结 GenerationSpec") |> render_click()
     shots |> element("button", "生成候选并执行 QC") |> render_click()
+    drain_generation_pipeline()
     assert has_element?(shots, ".candidate-card")
 
     refute Repo.exists?(
@@ -454,6 +598,17 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert timeline_html =~ "AAC 双声道静音占位"
     assert has_element?(timeline_view, "[data-render-path='preview']")
     assert has_element?(timeline_view, "[data-render-path='formal']")
+
+    timeline_view |> element("button", "生成预览") |> render_click()
+    preview = Repo.get_by!(RenderManifest, project_id: project.id, render_mode: :preview)
+    assert preview.status == :prepared
+    assert render(timeline_view) =~ "预览渲染已加入队列"
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :media, with_safety: false)
+
+    assert Repo.get!(RenderManifest, preview.id).status == :rendered
+
     timeline = Repo.get_by!(Timeline, project_id: project.id)
     first_clip = Repo.one!(from clip in Clip, where: clip.timeline_id == ^timeline.id, limit: 1)
 
@@ -496,7 +651,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
 
     timeline_view |> element("button", "冻结并正式导出") |> render_click()
 
-    rendered = Repo.get_by!(RenderManifest, project_id: project.id, render_mode: :formal)
+    queued = Repo.get_by!(RenderManifest, project_id: project.id, render_mode: :formal)
+    assert queued.status == :prepared
+
+    assert %{failure: 0, snoozed: 0, success: 1} =
+             Oban.drain_queue(queue: :media, with_safety: false)
+
+    rendered = Repo.get!(RenderManifest, queued.id)
     assert rendered.status == :rendered
     assert rendered.output_asset_id
     assert rendered.srt_asset_id
@@ -510,6 +671,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
 
     render_upload(upload, name)
     view |> form("#source-upload-form") |> render_submit()
+  end
+
+  defp drain_generation_pipeline do
+    Oban.drain_queue(queue: :generation, with_safety: false)
+    Oban.drain_queue(queue: :generation, with_safety: false)
+    Oban.drain_queue(queue: :qc, with_safety: false)
+    :ok
   end
 
   defp reference_assignments(project_id, asset_id) do

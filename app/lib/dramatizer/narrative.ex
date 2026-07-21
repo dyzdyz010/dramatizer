@@ -4,7 +4,7 @@ defmodule Dramatizer.Narrative do
   import Ecto.Query
 
   alias Dramatizer.Analysis.AnalysisSnapshot
-  alias Dramatizer.Analysis.{DAG, Runner}
+  alias Dramatizer.Analysis
   alias Dramatizer.Projects.Project
   alias Dramatizer.Repo
   alias Dramatizer.Revisions
@@ -26,9 +26,7 @@ defmodule Dramatizer.Narrative do
     if existing do
       {:ok, existing}
     else
-      with {:ok, run, _nodes} <- DAG.start(project, source_revision_ids) do
-        Runner.run(project, run, Application.fetch_env!(:dramatizer, :provider_mode))
-      end
+      Analysis.enqueue(project, source_revision_ids)
     end
   end
 

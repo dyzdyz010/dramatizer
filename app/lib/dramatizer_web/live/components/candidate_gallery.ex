@@ -116,6 +116,7 @@ defmodule DramatizerWeb.Live.Components.CandidateGallery do
                   class="btn btn-soft w-full"
                   phx-click="regenerate-candidate"
                   phx-value-spec-id={candidate.spec_id}
+                  phx-disable-with="正在入队…"
                 >
                   再次生成
                 </button>
@@ -141,7 +142,9 @@ defmodule DramatizerWeb.Live.Components.CandidateGallery do
                     required
                   />
                 </label>
-                <button type="submit" class="btn btn-ghost w-full">基于此图编辑</button>
+                <button type="submit" class="btn btn-ghost w-full" phx-disable-with="正在入队…">
+                  基于此图编辑
+                </button>
               </form>
 
               <details class="acceptance-note">

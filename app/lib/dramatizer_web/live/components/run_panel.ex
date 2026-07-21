@@ -10,7 +10,10 @@ defmodule DramatizerWeb.Live.Components.RunPanel do
       assigns
       |> assign(
         :failed_attempts,
-        Enum.filter(assigns.attempts, &(&1.status in [:failed, :timed_out]))
+        Enum.filter(
+          assigns.attempts,
+          &(&1.status in [:failed, :timed_out, :unknown_remote_state])
+        )
       )
       |> assign(
         :running_count,
@@ -92,7 +95,7 @@ defmodule DramatizerWeb.Live.Components.RunPanel do
           <div>
             <strong>{task_label(attempt.task_type)} · 尝试 {attempt.attempt_number}</strong>
             <p>{error_label(attempt.error_code)}</p>
-            <small>返回对应工作台点击“再次生成”；系统会建立新 Attempt，并保留这条失败证据。</small>
+            <small>{recovery_guidance(attempt)}</small>
           </div>
         </article>
       </section>
@@ -104,13 +107,15 @@ defmodule DramatizerWeb.Live.Components.RunPanel do
     """
   end
 
-  defp run_status(status) when status in [:pending, :running], do: :loading
+  defp run_status(:pending), do: :queued
+  defp run_status(:running), do: :loading
   defp run_status(:failed), do: :failed
   defp run_status(:succeeded), do: :ready
   defp run_status(_), do: :empty
 
-  defp attempt_status(status) when status in [:prepared, :submitted, :unknown_remote_state],
-    do: :loading
+  defp attempt_status(:prepared), do: :queued
+  defp attempt_status(:submitted), do: :loading
+  defp attempt_status(:unknown_remote_state), do: :unknown
 
   defp attempt_status(status) when status in [:failed, :timed_out], do: :failed
   defp attempt_status(:succeeded), do: :ready
@@ -133,13 +138,21 @@ defmodule DramatizerWeb.Live.Components.RunPanel do
   defp status_label(:succeeded), do: "成功"
   defp status_label(:failed), do: "失败"
   defp status_label(:timed_out), do: "超时"
+  defp status_label(:unknown_remote_state), do: "远端状态未知"
   defp status_label(status), do: to_string(status)
 
   defp error_label(nil), do: "未记录错误码"
   defp error_label("provider_rejected"), do: "Provider 拒绝了请求，可调整输入后重试"
   defp error_label("structured_validation_failed"), do: "模型输出未通过结构校验"
   defp error_label("invalid_proposal_output"), do: "提案字段不完整或类型错误"
+  defp error_label("unknown_remote_state"), do: "远端可能已接收请求；禁止自动重提，请人工核对"
   defp error_label(value), do: value
+
+  defp recovery_guidance(%{status: :unknown_remote_state}),
+    do: "先在 Provider 侧核对是否已产生结果；系统不会自动重提或创建新 Attempt。"
+
+  defp recovery_guidance(_attempt),
+    do: "返回对应工作台点击“再次生成”；系统会建立新 Attempt，并保留这条失败证据。"
 
   defp run_time(run) do
     cond do

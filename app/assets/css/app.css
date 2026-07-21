@@ -276,8 +276,10 @@ button, a, input, textarea, select { outline-color: var(--studio-accent); }
 .state-badge { display: inline-flex; align-items: center; gap: .4rem; width: fit-content; padding: .32rem .62rem; border: 1px solid currentColor; border-radius: 999px; font-size: .68rem; font-weight: 750; white-space: nowrap; }
 .state-badge__dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .state-empty { color: #7a8581; }
+.state-queued { color: #5969b8; }
 .state-loading { color: #2c73b9; }
 .state-failed { color: #c33c3c; }
+.state-unknown { color: #a04f17; }
 .state-ready { color: #248360; }
 .state-waiting_user { color: #b46a16; }
 .state-stale { color: #9a4db0; }

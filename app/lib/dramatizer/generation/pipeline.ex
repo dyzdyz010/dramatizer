@@ -4,15 +4,20 @@ defmodule Dramatizer.Generation.Pipeline do
   import Ecto.Query
 
   alias Dramatizer.Assets
+  alias Dramatizer.Analysis.AnalysisSnapshot
   alias Dramatizer.CanonicalJSON
+  alias Dramatizer.Directing
   alias Dramatizer.Generation.{GenerationSpec, ImagePromptProposal, Orchestrator}
   alias Dramatizer.Generation.Jobs.GenerationNodeJob
   alias Dramatizer.Generation.StructuredTextProposal
   alias Dramatizer.Execution.Notifier
+  alias Dramatizer.Narrative
   alias Dramatizer.Projects.Project
   alias Dramatizer.Quality
   alias Dramatizer.Quality.{SelectionDecision, SemanticQC}
   alias Dramatizer.Repo
+  alias Dramatizer.Revisions.Revision
+  alias Dramatizer.Visuals
   alias Dramatizer.Workflow
   alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
   alias Dramatizer.Workflow.Enqueue
@@ -92,12 +97,17 @@ defmodule Dramatizer.Generation.Pipeline do
 
     case StructuredTextProposal.propose(project, task_type, authority) do
       {:ok, proposal} ->
-        {:ok,
-         %{
-           "output" => proposal.output,
-           "provider_request_snapshot_id" => proposal.request_snapshot.id,
-           "attempt_id" => proposal.attempt.id
-         }}
+        with {:ok, draft_id} <- materialize_proposal(node, project, task_type, proposal.output) do
+          {:ok,
+           %{
+             "output" => proposal.output,
+             "provider_request_snapshot_id" => proposal.request_snapshot.id,
+             "attempt_id" => proposal.attempt.id,
+             "draft_id" => draft_id
+           }}
+        else
+          {:error, reason} -> {:error, reason, %{}}
+        end
 
       {:error, reason} ->
         {:error, reason, %{}}
@@ -299,6 +309,57 @@ defmodule Dramatizer.Generation.Pipeline do
     end)
   end
 
+  defp materialize_proposal(node, project, task_type, output) do
+    case get_in(node.input_snapshot, ["options", "materialization"]) do
+      nil ->
+        {:ok, nil}
+
+      %{
+        "kind" => "narrative",
+        "analysis_snapshot_id" => snapshot_id,
+        "candidate_id" => candidate_id
+      }
+      when task_type == :narrative_proposal ->
+        with {:ok, draft} <-
+               Narrative.create_proposal_draft(
+                 project,
+                 Repo.get!(AnalysisSnapshot, snapshot_id),
+                 candidate_id,
+                 output
+               ) do
+          {:ok, draft.id}
+        end
+
+      %{"kind" => "visual_design", "narrative_revision_id" => narrative_id}
+      when task_type == :visual_design_proposal ->
+        with {:ok, draft} <-
+               Visuals.create_proposal_draft(project, Repo.get!(Revision, narrative_id), output) do
+          {:ok, draft.id}
+        end
+
+      %{
+        "kind" => "directing",
+        "narrative_revision_id" => narrative_id,
+        "visual_design_revision_id" => visual_id,
+        "reference_set_revision_id" => reference_id
+      }
+      when task_type == :directing_proposal ->
+        with {:ok, draft} <-
+               Directing.create_proposal_draft(
+                 project,
+                 Repo.get!(Revision, narrative_id),
+                 Repo.get!(Revision, visual_id),
+                 Repo.get!(Revision, reference_id),
+                 output
+               ) do
+          {:ok, draft.id}
+        end
+
+      _invalid ->
+        {:error, :invalid_proposal_materialization}
+    end
+  end
+
   defp generation_options(node, prompt) do
     options = node.input_snapshot["options"] || %{}
 
@@ -316,6 +377,7 @@ defmodule Dramatizer.Generation.Pipeline do
       }
     ]
     |> maybe_put_option(:task_override, options["task_override"])
+    |> maybe_put_option(:fault_profile, options["fault_profile"])
     |> maybe_put_option(:reference_assets, load_assets(options["reference_asset_ids"]))
   end
 
@@ -331,7 +393,9 @@ defmodule Dramatizer.Generation.Pipeline do
       :reference_asset_ids,
       :selected_neighbor_ids,
       :evaluation_key,
-      :task_override
+      :task_override,
+      :fault_profile,
+      :materialization
     ])
     |> Map.new()
     |> stringify()

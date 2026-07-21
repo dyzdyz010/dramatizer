@@ -4,6 +4,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   import Ecto.Query
 
   alias Dramatizer.Analysis.AnalysisSnapshot
+  alias Dramatizer.Analysis
   alias Dramatizer.Assets
   alias Dramatizer.Assets.AssetVersion
   alias Dramatizer.Changes
@@ -12,15 +13,14 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   alias Dramatizer.Costs.CostEntry
   alias Dramatizer.Directing
   alias Dramatizer.Directing.Compiler
+  alias Dramatizer.Execution.WorkerRegistry
   alias Dramatizer.Generation
 
   alias Dramatizer.Generation.{
     Attempt,
     ConfigResolver,
     GenerationSpec,
-    Orchestrator,
-    ProviderRequestSnapshot,
-    StructuredTextProposal
+    ProviderRequestSnapshot
   }
 
   alias Dramatizer.Narrative
@@ -38,6 +38,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   alias Dramatizer.Timeline.Timeline, as: TimelineRecord
   alias Dramatizer.Visuals
   alias Dramatizer.Workflow
+  alias Dramatizer.Workflow.Enqueue
   alias Dramatizer.Workflow.{NodeRun, WorkflowRun}
 
   alias DramatizerWeb.Forms.{
@@ -46,6 +47,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     ShotPlanDraftForm,
     VisualDesignDraftForm
   }
+
+  alias DramatizerWeb.ProjectWorkspace.Subscription
 
   alias DramatizerWeb.Live.Components.{
     AnalysisReview,
@@ -69,6 +72,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   @impl Phoenix.LiveView
   def mount(%{"id" => id}, _session, socket) do
     project = Projects.get_project!(id)
+
+    if connected?(socket), do: :ok = Subscription.subscribe(project)
 
     socket =
       socket
@@ -207,13 +212,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
             nil ->
               revisions = source_revisions(socket.assigns.project.id)
 
-              case Narrative.ensure_analysis(
+              case Analysis.enqueue(
                      socket.assigns.project,
                      Enum.map(revisions, & &1.id)
                    ) do
-                {:ok, _snapshot} ->
+                {:ok, _run} ->
                   socket
-                  |> put_flash(:info, "原著已解析，整本分析提案已生成。")
+                  |> put_flash(:info, "原著已解析，全文分析已加入队列。")
                   |> push_patch(to: ~p"/projects/#{socket.assigns.project.id}/analysis")
 
                 {:error, reason} ->
@@ -262,10 +267,10 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     revision_ids = Enum.map(socket.assigns.source_revisions, & &1.id)
 
     socket =
-      case Narrative.ensure_analysis(socket.assigns.project, revision_ids) do
-        {:ok, _snapshot} ->
+      case Analysis.enqueue(socket.assigns.project, revision_ids) do
+        {:ok, _run} ->
           socket
-          |> put_flash(:info, "全文分析 DAG 已完成并冻结 AnalysisSnapshot。")
+          |> put_flash(:info, "全文分析已加入队列。")
           |> load_workspace()
 
         {:error, reason} ->
@@ -276,7 +281,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   end
 
   def handle_event("retry-node", %{"id" => id}, socket) do
-    result = id |> Repo.get!(NodeRun) |> Workflow.retry_node()
+    result = id |> Repo.get!(NodeRun) |> retry_node()
     {:noreply, result_flash(socket, result, "节点已重新排队。") |> load_workspace()}
   end
 
@@ -286,24 +291,24 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     result =
       if snapshot do
         with {:ok, authority} <- Narrative.proposal_authority(snapshot, candidate_id),
-             {:ok, proposal} <-
-               StructuredTextProposal.propose(
+             {:ok, run} <-
+               Generation.enqueue_proposal(
                  socket.assigns.project,
                  :narrative_proposal,
-                 authority
+                 authority,
+                 materialization: %{
+                   kind: :narrative,
+                   analysis_snapshot_id: snapshot.id,
+                   candidate_id: candidate_id
+                 }
                ) do
-          Narrative.create_proposal_draft(
-            socket.assigns.project,
-            snapshot,
-            candidate_id,
-            proposal.output
-          )
+          {:ok, run}
         end
       else
         {:error, :analysis_snapshot_required}
       end
 
-    {:noreply, result_flash(socket, result, "已创建可编辑 Narrative 草稿。") |> load_workspace()}
+    {:noreply, result_flash(socket, result, "Narrative 提案已加入队列。") |> load_workspace()}
   end
 
   def handle_event("save-narrative-draft", %{"id" => id, "narrative" => params}, socket) do
@@ -373,27 +378,27 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       case Revisions.confirm_draft(id) do
         {:ok, %Revision{kind: :narrative} = narrative} ->
           case create_visual_proposal(socket.assigns.project, narrative) do
-            {:ok, _draft} ->
-              put_flash(socket, :info, "Narrative 已冻结，VisualDesign 提案已生成。")
+            {:ok, _run} ->
+              put_flash(socket, :info, "Narrative 已冻结，VisualDesign 提案已加入队列。")
 
             {:error, reason} ->
               put_flash(
                 socket,
                 :error,
-                "Narrative 已冻结，但 VisualDesign 提案生成失败：#{human_error(reason)}"
+                "Narrative 已冻结，但 VisualDesign 提案入队失败：#{human_error(reason)}"
               )
           end
 
         {:ok, %Revision{kind: :reference_set} = reference_set} ->
           case create_directing_proposal(socket, reference_set) do
-            {:ok, _draft} ->
-              put_flash(socket, :info, "ReferenceSet 已冻结，Directing 提案已生成。")
+            {:ok, _run} ->
+              put_flash(socket, :info, "ReferenceSet 已冻结，Directing 提案已加入队列。")
 
             {:error, reason} ->
               put_flash(
                 socket,
                 :error,
-                "ReferenceSet 已冻结，但 Directing 提案生成失败：#{human_error(reason)}"
+                "ReferenceSet 已冻结，但 Directing 提案入队失败：#{human_error(reason)}"
               )
           end
 
@@ -572,19 +577,14 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     result =
       with %Revision{} = visual <- visual,
            {:ok, specs} <- materialize_reference_specs(socket.assigns.project, visual) do
-        Enum.reduce_while(specs, {:ok, []}, fn spec, {:ok, generated} ->
-          case Orchestrator.generate(spec, :reference_image, socket.assigns.project) do
-            {:ok, candidate} -> {:cont, {:ok, [candidate | generated]}}
-            {:error, reason} -> {:halt, {:error, reason}}
-          end
-        end)
+        enqueue_specs(socket.assigns.project, specs, :reference_image)
       else
         nil -> {:error, :confirmed_visual_design_required}
         error -> error
       end
 
     {:noreply,
-     result_flash(socket, result, "参考图候选及 QC 已完成，等待逐槽位选择。")
+     result_flash(socket, result, "参考图候选已加入队列。")
      |> load_workspace()}
   end
 
@@ -639,17 +639,20 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                formal: parent_spec.formal,
                payload: payload
              }),
-           {:ok, generated} <-
-             Orchestrator.generate(spec, :image_edit, socket.assigns.project,
-               reference_assets: [parent]
+           {:ok, run} <-
+             Generation.enqueue_pipeline(
+               socket.assigns.project,
+               spec,
+               :image_edit,
+               reference_asset_ids: [parent.id]
              ) do
-        {:ok, generated}
+        {:ok, run}
       else
         true -> {:error, :edit_instruction_required}
         error -> error
       end
 
-    {:noreply, result_flash(socket, result, "图像编辑已创建不可变子版本。") |> load_workspace()}
+    {:noreply, result_flash(socket, result, "图像编辑已加入队列。") |> load_workspace()}
   end
 
   def handle_event("compile-shot-specs", _params, socket) do
@@ -677,44 +680,32 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   def handle_event("generate-shot-candidates", _params, socket) do
     specs = Enum.filter(socket.assigns.specs, &(&1.kind == "shot_keyframe"))
 
-    result =
-      Enum.reduce_while(specs, {:ok, []}, fn spec, {:ok, results} ->
-        case Orchestrator.generate(spec, :shot_keyframe, socket.assigns.project) do
-          {:ok, generated} -> {:cont, {:ok, [generated | results]}}
-          {:error, reason} -> {:halt, {:error, reason}}
-        end
-      end)
+    result = enqueue_specs(socket.assigns.project, specs, :shot_keyframe)
 
-    {:noreply, result_flash(socket, result, "候选图及 QC 已完成，等待人工选择。") |> load_workspace()}
+    {:noreply, result_flash(socket, result, "镜头候选已加入队列。") |> load_workspace()}
   end
 
   def handle_event("inject-fake-failure", _params, socket) do
     {:ok, spec} = fake_fault_spec(socket.assigns.project)
 
     result =
-      Orchestrator.generate(spec, :shot_keyframe, socket.assigns.project,
+      Generation.enqueue_pipeline(socket.assigns.project, spec, :shot_keyframe,
         fault_profile: fake_fault_profile()
       )
 
-    socket =
-      case result do
-        {:error, :provider_rejected} -> put_flash(socket, :info, "Fake 首次提交已按计划失败。")
-        other -> result_flash(socket, other, "Fake 故障节点已执行。")
-      end
-
-    {:noreply, load_workspace(socket)}
+    {:noreply, result_flash(socket, result, "Fake 故障探针已加入队列。") |> load_workspace()}
   end
 
   def handle_event("resume-fake-failure", _params, socket) do
     {:ok, spec} = fake_fault_spec(socket.assigns.project)
 
     result =
-      Orchestrator.generate(spec, :shot_keyframe, socket.assigns.project,
+      retry_generation_pipeline(socket.assigns.project, spec, :shot_keyframe,
         fault_profile: fake_fault_profile()
       )
 
     {:noreply,
-     result_flash(socket, result, "Fake 节点已恢复；重复/乱序回调已去重。")
+     result_flash(socket, result, "Fake 故障节点已重新排队。")
      |> load_workspace()}
   end
 
@@ -825,10 +816,10 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                payload: parent.payload
              }),
            {:ok, task_type} <- generation_task_type(parent.kind) do
-        Orchestrator.generate(spec, task_type, socket.assigns.project)
+        Generation.enqueue_pipeline(socket.assigns.project, spec, task_type)
       end
 
-    {:noreply, result_flash(socket, result, "新候选已生成并完成 QC。") |> load_workspace()}
+    {:noreply, result_flash(socket, result, "新候选已加入队列。") |> load_workspace()}
   end
 
   def handle_event("resolve-stale", %{"selection-id" => id}, socket) do
@@ -961,13 +952,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     result =
       with %TimelineRecord{} = timeline <- socket.assigns.timeline,
            {:ok, manifest} <- RenderRecipe.preview(timeline) do
-        TimelineContext.render(manifest)
+        TimelineContext.enqueue_render(manifest)
       else
         nil -> {:error, :timeline_required}
         error -> error
       end
 
-    {:noreply, result_flash(socket, result, "预览已完成。") |> load_workspace()}
+    {:noreply, result_flash(socket, result, "预览渲染已加入队列。") |> load_workspace()}
   end
 
   def handle_event("freeze-timeline", _params, socket) do
@@ -975,14 +966,28 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       with %TimelineRecord{} = timeline <- socket.assigns.timeline,
            {:ok, version} <- TimelineContext.freeze(timeline),
            {:ok, manifest} <- RenderRecipe.formal(version) do
-        TimelineContext.render(manifest)
+        TimelineContext.enqueue_render(manifest)
       else
         nil -> {:error, :timeline_required}
         error -> error
       end
 
-    {:noreply, result_flash(socket, result, "正式成片与 SRT 已落盘。") |> load_workspace()}
+    {:noreply, result_flash(socket, result, "正式渲染已加入队列。") |> load_workspace()}
   end
+
+  @impl Phoenix.LiveView
+  def handle_info({:execution_changed, event}, socket) do
+    socket =
+      if event[:project_id] == socket.assigns.project.id do
+        reload_execution_slice(socket, Subscription.slice_for(event))
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl Phoenix.LiveView
   def render(assigns) do
@@ -1080,7 +1085,11 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                   type="button"
                   class="btn btn-primary"
                   phx-click="start-analysis"
-                  disabled={@source_revisions == []}
+                  phx-disable-with="正在入队…"
+                  disabled={
+                    @source_revisions == [] or
+                      workflow_active?(@runs, "whole_novel_analysis_v1")
+                  }
                 >
                   启动全文分析
                 </button>
@@ -1093,11 +1102,12 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                   <.state_badge state={node_state(node.status)} />
                   <p :if={node.error_code} class="error-copy">{node.error_code}</p>
                   <button
-                    :if={node.status == :failed}
+                    :if={node.status == :failed and node.error_code != "unknown_remote_state"}
                     type="button"
                     class="btn btn-ghost"
                     phx-click="retry-node"
                     phx-value-id={node.id}
+                    phx-disable-with="正在重新排队…"
                   >
                     仅重试本节点
                   </button>
@@ -1119,6 +1129,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                     class="btn btn-primary"
                     phx-click="select-episode"
                     phx-value-candidate-id={candidate["id"]}
+                    phx-disable-with="正在入队…"
+                    disabled={workflow_active?(@runs, "structured_proposal_v1")}
                   >
                     选择并创建 Narrative
                   </button>
@@ -1173,6 +1185,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                   type="button"
                   class="btn btn-primary"
                   phx-click="generate-reference-candidates"
+                  phx-disable-with="正在入队…"
+                  disabled={generation_active?(@runs)}
                 >
                   AI 生成参考候选
                 </button>
@@ -1216,7 +1230,11 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                   type="button"
                   class="btn btn-primary"
                   phx-click="generate-shot-candidates"
-                  disabled={Enum.all?(@specs, &(&1.kind != "shot_keyframe"))}
+                  phx-disable-with="正在入队…"
+                  disabled={
+                    Enum.all?(@specs, &(&1.kind != "shot_keyframe")) or
+                      generation_active?(@runs)
+                  }
                 >
                   生成候选并执行 QC
                 </button>
@@ -1288,10 +1306,20 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                   <p>首次提交失败；恢复时注入重复与乱序回调，验证只产生一个结果和一笔实际成本。</p>
                 </div>
                 <div>
-                  <button type="button" class="btn btn-soft" phx-click="inject-fake-failure">
+                  <button
+                    type="button"
+                    class="btn btn-soft"
+                    phx-click="inject-fake-failure"
+                    phx-disable-with="正在入队…"
+                  >
                     注入一次 Fake 失败
                   </button>
-                  <button type="button" class="btn btn-primary" phx-click="resume-fake-failure">
+                  <button
+                    type="button"
+                    class="btn btn-primary"
+                    phx-click="resume-fake-failure"
+                    phx-disable-with="正在重新排队…"
+                  >
                     恢复并注入重复乱序回调
                   </button>
                 </div>
@@ -1427,6 +1455,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           class="btn btn-primary"
           phx-click="confirm-draft"
           phx-value-id={@draft.id}
+          phx-disable-with="正在确认并入队…"
         >
           确认并冻结 Revision
         </button>
@@ -1445,10 +1474,13 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   end
 
   defp create_visual_proposal(project, narrative) do
-    with {:ok, authority} <- Visuals.proposal_authority(narrative),
-         {:ok, proposal} <-
-           StructuredTextProposal.propose(project, :visual_design_proposal, authority) do
-      Visuals.create_proposal_draft(project, narrative, proposal.output)
+    with {:ok, authority} <- Visuals.proposal_authority(narrative) do
+      Generation.enqueue_proposal(project, :visual_design_proposal, authority,
+        materialization: %{
+          kind: :visual_design,
+          narrative_revision_id: narrative.id
+        }
+      )
     end
   end
 
@@ -1460,19 +1492,19 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
          %Revision{} = visual_design <- visual_design,
          {:ok, authority} <-
            Directing.proposal_authority(narrative, visual_design, reference_set),
-         {:ok, proposal} <-
-           StructuredTextProposal.propose(
+         {:ok, run} <-
+           Generation.enqueue_proposal(
              socket.assigns.project,
              :directing_proposal,
-             authority
+             authority,
+             materialization: %{
+               kind: :directing,
+               narrative_revision_id: narrative.id,
+               visual_design_revision_id: visual_design.id,
+               reference_set_revision_id: reference_set.id
+             }
            ) do
-      Directing.create_proposal_draft(
-        socket.assigns.project,
-        narrative,
-        visual_design,
-        reference_set,
-        proposal.output
-      )
+      {:ok, run}
     else
       nil -> {:error, :confirmed_production_revisions_required}
       error -> error
@@ -1715,6 +1747,195 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     )
   end
 
+  defp project_drafts(project_id) do
+    Repo.all(
+      from draft in Draft,
+        where: draft.project_id == ^project_id,
+        order_by: [desc: draft.inserted_at]
+    )
+  end
+
+  defp reload_execution_slice(socket, :ignore), do: socket
+
+  defp reload_execution_slice(socket, :execution),
+    do: socket |> load_execution_slice() |> refresh_stage_states()
+
+  defp reload_execution_slice(socket, :analysis),
+    do: socket |> load_execution_slice() |> load_analysis_slice() |> refresh_stage_states()
+
+  defp reload_execution_slice(socket, :generation),
+    do: socket |> load_execution_slice() |> load_generation_slice() |> refresh_stage_states()
+
+  defp reload_execution_slice(socket, :timeline),
+    do: socket |> load_execution_slice() |> load_timeline_slice() |> refresh_stage_states()
+
+  defp reload_execution_slice(socket, :changes),
+    do: socket |> load_execution_slice() |> load_changes_slice() |> refresh_stage_states()
+
+  defp load_execution_slice(socket) do
+    project_id = socket.assigns.project.id
+
+    runs =
+      Repo.all(
+        from run in WorkflowRun,
+          where: run.project_id == ^project_id,
+          order_by: [desc: run.inserted_at]
+      )
+
+    run_ids = Enum.map(runs, & &1.id)
+
+    nodes =
+      if run_ids == [] do
+        []
+      else
+        Repo.all(
+          from node in NodeRun,
+            where: node.workflow_run_id in ^run_ids,
+            order_by: [desc: node.inserted_at]
+        )
+      end
+
+    socket
+    |> assign(:runs, runs)
+    |> assign(:all_nodes, nodes)
+    |> assign(:nodes, current_nodes(nodes, runs))
+    |> assign(:attempts, attempt_traces(project_id))
+    |> assign(:costs, Repo.all(from cost in CostEntry, where: cost.project_id == ^project_id))
+  end
+
+  defp load_analysis_slice(socket) do
+    snapshots =
+      Repo.all(
+        from snapshot in AnalysisSnapshot,
+          where: snapshot.project_id == ^socket.assigns.project.id,
+          order_by: [desc: snapshot.inserted_at]
+      )
+
+    socket
+    |> assign(:analysis_snapshots, snapshots)
+    |> assign(:episode_candidates, episode_candidates(snapshots))
+  end
+
+  defp load_generation_slice(socket) do
+    project_id = socket.assigns.project.id
+    drafts = project_drafts(project_id)
+    specs = Repo.all(from spec in GenerationSpec, where: spec.project_id == ^project_id)
+    assets = Repo.all(from asset in AssetVersion, where: asset.project_id == ^project_id)
+
+    reports =
+      Repo.all(
+        from report in QualityReport,
+          where: report.project_id == ^project_id,
+          order_by: [desc: report.inserted_at]
+      )
+
+    selections =
+      Repo.all(
+        from selection in SelectionDecision,
+          where: selection.project_id == ^project_id and selection.status == :active
+      )
+
+    candidates =
+      build_candidates(
+        assets,
+        specs,
+        reports,
+        selections,
+        socket.assigns.attempts,
+        socket.assigns.costs
+      )
+
+    socket
+    |> assign(:drafts, drafts)
+    |> assign(:specs, specs)
+    |> assign(:assets, assets)
+    |> assign(:selections, selections)
+    |> assign(:candidates, candidates)
+    |> assign(
+      :reference_candidates,
+      Enum.filter(candidates, &String.starts_with?(&1.slot_key, "reference:"))
+    )
+    |> assign(
+      :shot_candidates,
+      Enum.filter(candidates, &String.starts_with?(&1.slot_key, "shot:"))
+    )
+    |> assign(
+      :reference_assets,
+      Enum.filter(assets, &String.starts_with?(&1.mime_type, "image/"))
+    )
+  end
+
+  defp load_timeline_slice(socket) do
+    project_id = socket.assigns.project.id
+
+    timeline =
+      Repo.one(
+        from timeline in TimelineRecord,
+          where: timeline.project_id == ^project_id,
+          order_by: [desc: timeline.inserted_at],
+          limit: 1
+      )
+
+    renders =
+      Repo.all(
+        from manifest in RenderManifest,
+          where: manifest.project_id == ^project_id,
+          order_by: [desc: manifest.inserted_at]
+      )
+
+    socket
+    |> assign(:timeline, timeline)
+    |> assign(:clips, if(timeline, do: TimelineContext.list_clips(timeline), else: []))
+    |> assign(:subtitles, if(timeline, do: TimelineContext.list_subtitles(timeline), else: []))
+    |> assign(:renders, renders)
+  end
+
+  defp load_changes_slice(socket) do
+    project_id = socket.assigns.project.id
+
+    stale_records =
+      Repo.all(
+        from stale in StaleRecord,
+          where: stale.project_id == ^project_id and stale.resolution == :unresolved,
+          order_by: [desc: stale.inserted_at]
+      )
+
+    change_sets =
+      Repo.all(
+        from change in ChangeSet,
+          where: change.project_id == ^project_id,
+          order_by: [desc: change.inserted_at]
+      )
+
+    socket
+    |> assign(:stale_records, stale_records)
+    |> assign(:change_sets, change_sets)
+  end
+
+  defp refresh_stage_states(socket) do
+    data = %{
+      source_revisions: socket.assigns.source_revisions,
+      runs: socket.assigns.runs,
+      nodes: socket.assigns.all_nodes,
+      snapshots: socket.assigns.analysis_snapshots,
+      drafts: socket.assigns.drafts,
+      revisions: socket.assigns.revisions,
+      specs: socket.assigns.specs,
+      candidates: socket.assigns.candidates,
+      selections: socket.assigns.selections,
+      stale_records: socket.assigns.stale_records,
+      timeline: socket.assigns.timeline,
+      renders: socket.assigns.renders,
+      attempts: socket.assigns.attempts
+    }
+
+    states = stage_states(data)
+
+    socket
+    |> assign(:stage_states, states)
+    |> assign(:state, Map.fetch!(states, socket.assigns.stage))
+  end
+
   defp load_workspace(socket) do
     project_id = socket.assigns.project.id
     source_revisions = source_revisions(project_id)
@@ -1746,12 +1967,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           order_by: [desc: snapshot.inserted_at]
       )
 
-    drafts =
-      Repo.all(
-        from draft in Draft,
-          where: draft.project_id == ^project_id,
-          order_by: [desc: draft.inserted_at]
-      )
+    drafts = project_drafts(project_id)
 
     revisions =
       Repo.all(
@@ -1858,6 +2074,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     |> assign(:stage_states, stage_states)
     |> assign(:source_revisions, source_revisions)
     |> assign(:runs, runs)
+    |> assign(:all_nodes, nodes)
     |> assign(:nodes, current_nodes(nodes, runs))
     |> assign(:analysis_snapshots, snapshots)
     |> assign(:episode_candidates, episode_candidates)
@@ -1907,6 +2124,46 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
       :ok
     else
       {:error, :invalid_candidate_count}
+    end
+  end
+
+  defp enqueue_specs(project, specs, task_type) do
+    Enum.reduce_while(specs, {:ok, []}, fn spec, {:ok, runs} ->
+      case Generation.enqueue_pipeline(project, spec, task_type) do
+        {:ok, run} -> {:cont, {:ok, [run | runs]}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp retry_generation_pipeline(project, spec, task_type, opts) do
+    with {:ok, run} <- Generation.enqueue_pipeline(project, spec, task_type, opts) do
+      case Repo.one(
+             from node in NodeRun,
+               where: node.workflow_run_id == ^run.id and node.status == :failed,
+               order_by: [asc: node.inserted_at],
+               limit: 1
+           ) do
+        nil -> {:ok, run}
+        failed -> retry_node(failed)
+      end
+    end
+  end
+
+  defp retry_node(%NodeRun{} = node) do
+    with {:ok, worker} <- registered_worker(node.worker),
+         {:ok, queued} <- Workflow.retry_node(node),
+         run <- Repo.get!(WorkflowRun, queued.workflow_run_id),
+         {:ok, _running} <- Workflow.mark_run(run, :running),
+         {:ok, %{node: owned}} <- Enqueue.node(queued, worker) do
+      {:ok, owned}
+    end
+  end
+
+  defp registered_worker(name) do
+    case WorkerRegistry.fetch(name) do
+      {:ok, worker} -> {:ok, worker}
+      :error -> {:error, :unregistered_worker}
     end
   end
 
@@ -2141,8 +2398,12 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     end)
   end
 
-  defp current_nodes(nodes, [run | _]), do: Enum.filter(nodes, &(&1.workflow_run_id == run.id))
-  defp current_nodes(_nodes, []), do: []
+  defp current_nodes(nodes, runs) do
+    case Enum.find(runs, &(&1.definition_key == "whole_novel_analysis_v1")) do
+      nil -> []
+      run -> Enum.filter(nodes, &(&1.workflow_run_id == run.id))
+    end
+  end
 
   defp stage_states(data) do
     stale? = data.stale_records != []
@@ -2169,11 +2430,20 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
         end,
       shots:
         cond do
-          stale? -> :stale
-          shot_plan? and data.candidates != [] and data.selections != [] -> :ready
-          Enum.any?(data.attempts, &(&1.status in [:failed, :timed_out])) -> :failed
-          Enum.any?(data.attempts, &(&1.status in [:prepared, :submitted])) -> :loading
-          true -> :waiting_user
+          stale? ->
+            :stale
+
+          shot_plan? and data.candidates != [] and data.selections != [] ->
+            :ready
+
+          Enum.any?(data.attempts, &(&1.status in [:failed, :timed_out, :unknown_remote_state])) ->
+            :failed
+
+          Enum.any?(data.attempts, &(&1.status in [:prepared, :submitted])) ->
+            :loading
+
+          true ->
+            :waiting_user
         end,
       timeline:
         cond do
@@ -2183,7 +2453,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           Enum.any?(data.renders, &(&1.status == :failed)) ->
             :failed
 
-          Enum.any?(data.renders, &(&1.status == :rendering)) ->
+          Enum.any?(data.renders, &(&1.status in [:prepared, :rendering])) ->
             :loading
 
           Enum.any?(data.renders, &(&1.status == :rendered and &1.render_mode == :formal)) ->
@@ -2216,7 +2486,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
         :empty
 
       Enum.any?(data.nodes, &(&1.status == :failed)) or
-          Enum.any?(data.attempts, &(&1.status in [:failed, :timed_out])) ->
+          Enum.any?(data.attempts, &(&1.status in [:failed, :timed_out, :unknown_remote_state])) ->
         :failed
 
       Enum.any?(data.nodes, &(&1.status in [:queued, :running])) or
@@ -2230,6 +2500,17 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
   defp latest_revision(revisions, kind), do: Enum.find(revisions, &(&1.kind == kind))
   defp drafts_for(drafts, kind), do: Enum.filter(drafts, &(&1.kind == kind))
+
+  defp workflow_active?(runs, definition_key) do
+    Enum.any?(runs, &(&1.definition_key == definition_key and &1.status in [:pending, :running]))
+  end
+
+  defp generation_active?(runs) do
+    Enum.any?(runs, fn run ->
+      run.definition_key in ["structured_proposal_v1", "image_generation_v1"] and
+        run.status in [:pending, :running]
+    end)
+  end
 
   defp result_flash(socket, {:ok, _value}, message), do: put_flash(socket, :info, message)
 
@@ -2340,7 +2621,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     end
   end
 
-  defp node_state(status) when status in [:queued, :running], do: :loading
+  defp node_state(:queued), do: :queued
+  defp node_state(:running), do: :loading
   defp node_state(:failed), do: :failed
   defp node_state(:succeeded), do: :ready
   defp node_state(_), do: :empty
