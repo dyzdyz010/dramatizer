@@ -5,6 +5,7 @@ defmodule Dramatizer.Analysis.DAG do
 
   alias Dramatizer.Analysis.AnalysisSnapshot
   alias Dramatizer.CanonicalJSON
+  alias Dramatizer.Generation.ConfigResolver
   alias Dramatizer.Projects.Project
   alias Dramatizer.Repo
   alias Dramatizer.Sources
@@ -22,8 +23,11 @@ defmodule Dramatizer.Analysis.DAG do
 
   def definition, do: @definition
 
-  def start(%Project{} = project, source_revision_ids) do
-    with {:ok, input} <- Sources.analysis_input(project, source_revision_ids),
+  def start(%Project{} = project, source_revision_ids, opts \\ []) do
+    with {:ok, execution} <- execution_snapshot(project, opts),
+         {:ok, input} <- Sources.analysis_input(project, source_revision_ids),
+         provider_mode = String.to_existing_atom(execution["provider_mode"]),
+         execution_hash = CanonicalJSON.hash(execution),
          {:ok, run} <-
            Workflow.create_run(
              project,
@@ -31,9 +35,10 @@ defmodule Dramatizer.Analysis.DAG do
              %{
                "source_revision_ids" => source_revision_ids,
                "source_content_hash" => input.content_hash,
-               "strategy" => "whole_document"
+               "strategy" => "whole_document",
+               "execution" => execution
              },
-             "whole-novel:#{input.content_hash}"
+             "whole-novel:#{input.content_hash}:#{execution_hash}"
            ) do
       nodes =
         Enum.map(@definition, fn {node_key, parents} ->
@@ -46,7 +51,10 @@ defmodule Dramatizer.Analysis.DAG do
                 "whole_document" => input.text,
                 "source_revision_ids" => source_revision_ids,
                 "source_content_hash" => input.content_hash,
-                "strategy" => "whole_document"
+                "strategy" => "whole_document",
+                "provider_mode" => Atom.to_string(provider_mode),
+                "execution_hash" => execution_hash,
+                "task_config" => task_config(execution, node_key)
               },
               parents
             )
@@ -56,6 +64,56 @@ defmodule Dramatizer.Analysis.DAG do
 
       {:ok, run, nodes}
     end
+  end
+
+  def execution_snapshot(%Project{} = project, opts \\ []) do
+    with {:ok, provider_mode} <- provider_mode(opts) do
+      {:ok, build_execution_snapshot(provider_mode, project)}
+    end
+  end
+
+  defp provider_mode(opts) do
+    case Keyword.get(opts, :provider_mode, Application.fetch_env!(:dramatizer, :provider_mode)) do
+      mode when mode in [:fake, :openai] -> {:ok, mode}
+      mode -> {:error, {:unsupported_provider_mode, mode}}
+    end
+  end
+
+  defp build_execution_snapshot(:fake, _project) do
+    %{
+      "provider_mode" => "fake",
+      "adapter" => "fixture",
+      "model" => "fixture-analysis-v1",
+      "workflow_schema_version" => 2
+    }
+  end
+
+  defp build_execution_snapshot(:openai, project) do
+    tasks =
+      Map.new(@definition, fn {node_key, _parents} ->
+        config = ConfigResolver.resolve(String.to_existing_atom(node_key), project)
+
+        {node_key,
+         %{
+           "adapter" => config.adapter,
+           "credential_ref" => config.credential_ref,
+           "model" => config.model,
+           "params" => config.params
+         }}
+      end)
+
+    %{"provider_mode" => "openai", "tasks" => tasks, "workflow_schema_version" => 2}
+  end
+
+  defp task_config(%{"tasks" => tasks}, node_key), do: Map.fetch!(tasks, node_key)
+
+  defp task_config(%{"provider_mode" => "fake"} = execution, _node_key) do
+    %{
+      "adapter" => Map.fetch!(execution, "adapter"),
+      "credential_ref" => "none",
+      "model" => Map.fetch!(execution, "model"),
+      "params" => %{}
+    }
   end
 
   def finalize(%WorkflowRun{} = run) do

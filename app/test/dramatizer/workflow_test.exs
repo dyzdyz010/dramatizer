@@ -45,6 +45,17 @@ defmodule Dramatizer.WorkflowTest do
     assert retried.run_count == 2
   end
 
+  test "resuming a terminal workflow clears its previous completion timestamp" do
+    assert {:ok, project} = Projects.create_project(%{name: "工作流恢复"})
+    assert {:ok, run} = Workflow.create_run(project, "resume_v1", %{}, "resume-run")
+    assert {:ok, failed} = Workflow.mark_run(run, :failed)
+    assert failed.completed_at
+
+    assert {:ok, running} = Workflow.mark_run(failed, :running)
+    assert running.status == :running
+    assert running.completed_at == nil
+  end
+
   test "concurrent duplicate run creation and inbox delivery have one logical effect" do
     assert {:ok, project} = Projects.create_project(%{name: "幂等测试"})
 

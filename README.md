@@ -56,6 +56,7 @@ OPENAI_API_KEY=your-key
 - 冻结实施计划：[`docs/superpowers/plans/2026-07-15-dramatizer-mvp.md`](docs/superpowers/plans/2026-07-15-dramatizer-mvp.md)
 - 异步执行设计：[`docs/superpowers/specs/2026-07-21-async-execution-and-truthful-status-design.md`](docs/superpowers/specs/2026-07-21-async-execution-and-truthful-status-design.md)
 - 异步执行实施计划：[`docs/superpowers/plans/2026-07-21-async-execution-and-truthful-status.md`](docs/superpowers/plans/2026-07-21-async-execution-and-truthful-status.md)
+- 分析恢复设计：[`docs/superpowers/specs/2026-07-22-analysis-resume-recovery-design.md`](docs/superpowers/specs/2026-07-22-analysis-resume-recovery-design.md)
 - 当前检查点：[`STATUS.md`](STATUS.md)
 - 原始冻结架构基线：[`docs/ai_short_drama_framework_v0.2/README.md`](docs/ai_short_drama_framework_v0.2/README.md)
 

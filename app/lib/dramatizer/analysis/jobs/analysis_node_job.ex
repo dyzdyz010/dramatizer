@@ -34,17 +34,41 @@ defmodule Dramatizer.Analysis.Jobs.AnalysisNodeJob do
     do: min(300, trunc(:math.pow(2, attempt)) * 5)
 
   defp execute(node, project, job) do
-    mode = Application.fetch_env!(:dramatizer, :provider_mode)
+    with {:ok, mode, options} <- execution_options(node) do
+      case Analysis.perform_node(node, project, mode, options) do
+        {:ok, result} ->
+          commit_success(node, project, job, result)
 
-    case Analysis.perform_node(node, project, mode) do
-      {:ok, result} ->
-        commit_success(node, project, job, result)
+        {:error, reason, details} ->
+          handle_failure(node, project, job, reason, details)
 
-      {:error, reason, details} ->
-        handle_failure(node, project, job, reason, details)
+        {:error, reason} ->
+          handle_failure(node, project, job, reason, %{})
+      end
+    else
+      {:error, reason} -> handle_failure(node, project, job, reason, %{})
+    end
+  end
 
-      {:error, reason} ->
-        handle_failure(node, project, job, reason, %{})
+  @doc false
+  def execution_options(%NodeRun{input_snapshot: snapshot}) do
+    with provider_mode when provider_mode in ["fake", "openai"] <- snapshot["provider_mode"],
+         %{} = config <- snapshot["task_config"],
+         adapter when is_binary(adapter) <- config["adapter"],
+         credential_ref when is_binary(credential_ref) <- config["credential_ref"],
+         model when is_binary(model) <- config["model"],
+         params when is_map(params) <- config["params"] do
+      resolved = %{
+        adapter: adapter,
+        credential_ref: credential_ref,
+        model: model,
+        params: params
+      }
+
+      {:ok, String.to_existing_atom(provider_mode),
+       [task_override: resolved, resolved_task_config: resolved]}
+    else
+      _missing_or_invalid -> {:error, :execution_snapshot_missing}
     end
   end
 
@@ -58,15 +82,20 @@ defmodule Dramatizer.Analysis.Jobs.AnalysisNodeJob do
   defp handle_failure(node, project, job, reason, details) do
     transaction =
       Repo.transaction(fn ->
+        run = lock_run(node.workflow_run_id)
+
         {normalized_reason, normalized_details} =
           Generation.reconcile_guard_failure(node, reason, details)
 
         case WorkerLifecycle.fail(node, job, normalized_reason, normalized_details, notify: false) do
           {:retry, _queued, _delay} ->
-            :retry
+            case Workflow.mark_run(run, :running) do
+              {:ok, _running_run} -> :retry
+              {:error, failure_reason} -> Repo.rollback(failure_reason)
+            end
 
           {terminal, _terminal_node} when terminal in [:failed, :cancelled] ->
-            case mark_run_failed(node.workflow_run_id, project, node.id) do
+            case mark_run_failed(run, project, node.id) do
               :ok -> :terminal
               {:error, failure_reason} -> Repo.rollback(failure_reason)
             end
@@ -99,8 +128,10 @@ defmodule Dramatizer.Analysis.Jobs.AnalysisNodeJob do
   defp commit_success(node, project, job, result) do
     result =
       Repo.transaction(fn ->
+        run = lock_run(node.workflow_run_id)
+
         with {:ok, completed} <- WorkerLifecycle.succeed(node, job, result, notify: false),
-             :ok <- advance(completed, project) do
+             :ok <- advance(completed, project, run) do
           :ok
         else
           {:skip, _reason} -> :ok
@@ -121,7 +152,9 @@ defmodule Dramatizer.Analysis.Jobs.AnalysisNodeJob do
   defp resume_terminal(%NodeRun{status: :succeeded} = node, project) do
     result =
       Repo.transaction(fn ->
-        case advance(node, project) do
+        run = lock_run(node.workflow_run_id)
+
+        case advance(node, project, run) do
           :ok -> :ok
           {:error, reason} -> Repo.rollback(reason)
         end
@@ -141,7 +174,9 @@ defmodule Dramatizer.Analysis.Jobs.AnalysisNodeJob do
        when status in [:failed, :cancelled] do
     result =
       Repo.transaction(fn ->
-        case mark_run_failed(node.workflow_run_id, project, node.id) do
+        run = lock_run(node.workflow_run_id)
+
+        case mark_run_failed(run, project, node.id) do
           :ok -> :ok
           {:error, reason} -> Repo.rollback(reason)
         end
@@ -159,13 +194,11 @@ defmodule Dramatizer.Analysis.Jobs.AnalysisNodeJob do
 
   defp resume_terminal(%NodeRun{}, _project), do: :ok
 
-  defp advance(node, _project) do
+  defp advance(node, _project, run) do
     with :ok <- enqueue_ready_nodes(node.workflow_run_id) do
       nodes = Repo.all(from item in NodeRun, where: item.workflow_run_id == ^node.workflow_run_id)
 
       if nodes != [] and Enum.all?(nodes, &(&1.status == :succeeded)) do
-        run = Repo.get!(WorkflowRun, node.workflow_run_id)
-
         with {:ok, _snapshot} <- DAG.finalize(run),
              {:ok, _run} <- Workflow.mark_run(run, :succeeded),
              do: :ok
@@ -182,12 +215,18 @@ defmodule Dramatizer.Analysis.Jobs.AnalysisNodeJob do
     end
   end
 
-  defp mark_run_failed(run_id, _project, _node_id) do
-    run = Repo.get!(WorkflowRun, run_id)
-
+  defp mark_run_failed(run, _project, _node_id) do
     with {:ok, _run} <- Workflow.mark_run(run, :failed) do
       :ok
     end
+  end
+
+  defp lock_run(run_id) do
+    Repo.one!(
+      from run in WorkflowRun,
+        where: run.id == ^run_id,
+        lock: "FOR UPDATE"
+    )
   end
 
   defp notify_after_commit(project, node_id, status) do

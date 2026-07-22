@@ -5,6 +5,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
 
   alias Dramatizer.Analysis.AnalysisSnapshot
   alias Dramatizer.Analysis
+  alias Dramatizer.Analysis.DAG
   alias Dramatizer.Assets
   alias Dramatizer.Assets.AssetVersion
   alias Dramatizer.Changes
@@ -281,7 +282,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   end
 
   def handle_event("retry-node", %{"id" => id}, socket) do
-    result = id |> Repo.get!(NodeRun) |> retry_node()
+    result = id |> then(&Repo.get!(NodeRun, &1)) |> Analysis.retry_node()
     {:noreply, result_flash(socket, result, "节点已重新排队。") |> load_workspace()}
   end
 
@@ -1088,7 +1089,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
                   phx-disable-with="正在入队…"
                   disabled={
                     @source_revisions == [] or
-                      workflow_active?(@runs, "whole_novel_analysis_v1")
+                      analysis_workflow_active?(@runs, @project, @provider_mode)
                   }
                 >
                   启动全文分析
@@ -1758,7 +1759,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp reload_execution_slice(socket, :ignore), do: socket
 
   defp reload_execution_slice(socket, :execution),
-    do: socket |> load_execution_slice() |> refresh_stage_states()
+    do: socket |> load_execution_slice() |> load_analysis_slice() |> refresh_stage_states()
 
   defp reload_execution_slice(socket, :analysis),
     do: socket |> load_execution_slice() |> load_analysis_slice() |> refresh_stage_states()
@@ -1810,6 +1811,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           where: snapshot.project_id == ^socket.assigns.project.id,
           order_by: [desc: snapshot.inserted_at]
       )
+      |> current_analysis_snapshots(socket.assigns.runs)
 
     socket
     |> assign(:analysis_snapshots, snapshots)
@@ -1966,6 +1968,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
           where: snapshot.project_id == ^project_id,
           order_by: [desc: snapshot.inserted_at]
       )
+      |> current_analysis_snapshots(runs)
 
     drafts = project_drafts(project_id)
 
@@ -2399,9 +2402,19 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   end
 
   defp current_nodes(nodes, runs) do
-    case Enum.find(runs, &(&1.definition_key == "whole_novel_analysis_v1")) do
+    case latest_analysis_run(runs) do
       nil -> []
       run -> Enum.filter(nodes, &(&1.workflow_run_id == run.id))
+    end
+  end
+
+  defp latest_analysis_run(runs),
+    do: Enum.find(runs, &(&1.definition_key == "whole_novel_analysis_v1"))
+
+  defp current_analysis_snapshots(snapshots, runs) do
+    case latest_analysis_run(runs) do
+      nil -> []
+      run -> Enum.filter(snapshots, &(&1.workflow_run_id == run.id))
     end
   end
 
@@ -2466,11 +2479,22 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp analysis_state(%{source_revisions: []}), do: :waiting_user
 
   defp analysis_state(data) do
-    cond do
-      Enum.any?(data.nodes, &(&1.status == :failed)) -> :failed
-      Enum.any?(data.nodes, &(&1.status in [:queued, :running])) -> :loading
-      data.snapshots != [] -> :ready
-      true -> :waiting_user
+    case latest_analysis_run(data.runs) do
+      nil ->
+        :waiting_user
+
+      run ->
+        nodes = Enum.filter(data.nodes, &(&1.workflow_run_id == run.id))
+        snapshot? = Enum.any?(data.snapshots, &(&1.workflow_run_id == run.id))
+
+        cond do
+          run.status in [:failed, :cancelled] -> :failed
+          Enum.any?(nodes, &(&1.status in [:failed, :cancelled])) -> :failed
+          run.status in [:pending, :running] -> :loading
+          run.status == :succeeded and snapshot? -> :ready
+          run.status == :succeeded -> :failed
+          true -> :waiting_user
+        end
     end
   end
 
@@ -2565,6 +2589,23 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
     Enum.any?(runs, &(&1.definition_key == definition_key and &1.status in [:pending, :running]))
   end
 
+  defp analysis_workflow_active?(runs, project, provider_mode) do
+    {:ok, current_execution} = DAG.execution_snapshot(project, provider_mode: provider_mode)
+
+    Enum.any?(runs, fn run ->
+      run.definition_key == "whole_novel_analysis_v1" and
+        run.status in [:pending, :running] and
+        analysis_execution_matches?(run, current_execution)
+    end)
+  end
+
+  defp analysis_execution_matches?(run, current_execution) do
+    case run.input_snapshot["execution"] do
+      nil -> current_execution["provider_mode"] == "openai"
+      persisted_execution -> persisted_execution == current_execution
+    end
+  end
+
   defp generation_active?(runs) do
     Enum.any?(runs, fn run ->
       run.definition_key in ["structured_proposal_v1", "image_generation_v1"] and
@@ -2583,6 +2624,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLive do
   defp human_error({:form_validation, _errors}), do: "表单存在缺失或冲突字段，请检查后再保存。"
   defp human_error(:confirmed_timeline_inputs_required), do: "请先确认 Narrative 与 ShotPlan。"
   defp human_error(:analysis_snapshot_required), do: "请先完成全文分析。"
+  defp human_error(:unknown_remote_state), do: "远端执行结果未知，已禁止自动重提。"
+  defp human_error(:node_dependencies_incomplete), do: "上游节点尚未成功，当前节点不能重试。"
   defp human_error(:invalid_json), do: "JSON 格式无效。"
   defp human_error(:invalid_candidate_count), do: "候选数量必须是正整数。"
   defp human_error(:shot_selection_required), do: "时间线只能使用镜头候选，不能使用参考图。"

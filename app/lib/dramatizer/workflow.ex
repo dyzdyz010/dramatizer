@@ -197,7 +197,7 @@ defmodule Dramatizer.Workflow do
 
     attrs =
       case status do
-        :running -> %{status: status, started_at: run.started_at || now}
+        :running -> %{status: status, started_at: run.started_at || now, completed_at: nil}
         _ -> %{status: status, completed_at: now}
       end
 

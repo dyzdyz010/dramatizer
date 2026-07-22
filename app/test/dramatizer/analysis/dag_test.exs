@@ -8,6 +8,7 @@ defmodule Dramatizer.Analysis.DAGTest do
   alias Dramatizer.Analysis.Jobs.AnalysisNodeJob
   alias Dramatizer.Costs
   alias Dramatizer.Costs.CostEntry
+  alias Dramatizer.Generation
   alias Dramatizer.Generation.Attempt
   alias Dramatizer.Projects
   alias Dramatizer.Repo
@@ -114,6 +115,230 @@ defmodule Dramatizer.Analysis.DAGTest do
            ) == 3
   end
 
+  test "enqueue recovers runnable nodes from an idempotent legacy analysis run", context do
+    assert {:ok, run, nodes} = DAG.start(context.project, [context.source.id])
+    by_key = Map.new(nodes, &{&1.node_key, &1})
+
+    assert {:ok, people_running} =
+             Workflow.transition_node(by_key["people_relations"], :running)
+
+    assert people_running.worker == nil
+    assert people_running.active_job_id == nil
+
+    assert {:ok, places_running} =
+             Workflow.transition_node(by_key["places_props_world"], :running)
+
+    assert {:ok, _places_succeeded} =
+             Workflow.transition_node(places_running, :succeeded, %{result: %{"items" => []}})
+
+    assert {:ok, events_running} =
+             Workflow.transition_node(by_key["events_timeline"], :running)
+
+    assert {:ok, _events_failed} =
+             Workflow.transition_node(events_running, :failed, %{error_code: "provider_failed"})
+
+    assert {:ok, failed_run} = Workflow.mark_run(run, :failed)
+    assert failed_run.completed_at
+    assert Repo.aggregate(Oban.Job, :count) == 0
+
+    assert {:ok, resumed} = Analysis.enqueue(context.project, [context.source.id])
+    assert resumed.id == run.id
+    assert resumed.status == :running
+    assert resumed.completed_at == nil
+
+    recovered =
+      Repo.all(from node in NodeRun, where: node.workflow_run_id == ^run.id)
+      |> Map.new(&{&1.node_key, &1})
+
+    assert recovered["people_relations"].status == :queued
+    assert recovered["people_relations"].run_count == 2
+    assert recovered["people_relations"].worker == inspect(AnalysisNodeJob)
+    assert is_integer(recovered["people_relations"].active_job_id)
+
+    assert recovered["events_timeline"].status == :queued
+    assert recovered["events_timeline"].run_count == 2
+    assert recovered["events_timeline"].worker == inspect(AnalysisNodeJob)
+    assert is_integer(recovered["events_timeline"].active_job_id)
+
+    assert recovered["places_props_world"].status == :succeeded
+    assert recovered["places_props_world"].active_job_id == nil
+    assert Repo.aggregate(Oban.Job, :count) == 2
+  end
+
+  test "provider mode is part of analysis workflow identity", context do
+    assert {:ok, fake_run} =
+             Analysis.enqueue(context.project, [context.source.id], provider_mode: :fake)
+
+    assert {:ok, same_fake_run} =
+             Analysis.enqueue(context.project, [context.source.id], provider_mode: :fake)
+
+    assert same_fake_run.id == fake_run.id
+    assert fake_run.input_snapshot["execution"]["workflow_schema_version"] == 2
+
+    assert {:ok, openai_run} =
+             Analysis.enqueue(context.project, [context.source.id], provider_mode: :openai)
+
+    refute openai_run.id == fake_run.id
+
+    modes =
+      Repo.all(
+        from node in NodeRun,
+          where: node.workflow_run_id in ^[fake_run.id, openai_run.id],
+          select: {node.workflow_run_id, node.input_snapshot["provider_mode"]}
+      )
+      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+
+    assert Enum.uniq(modes[fake_run.id]) == ["fake"]
+    assert Enum.uniq(modes[openai_run.id]) == ["openai"]
+
+    fake_node =
+      Repo.one!(
+        from node in NodeRun,
+          where: node.workflow_run_id == ^fake_run.id and node.node_key == "people_relations"
+      )
+
+    assert fake_node.input_snapshot["task_config"] == %{
+             "adapter" => "fixture",
+             "credential_ref" => "none",
+             "model" => "fixture-analysis-v1",
+             "params" => %{}
+           }
+  end
+
+  test "analysis nodes freeze their resolved task config and config changes create a new run",
+       context do
+    assert {:ok, _override} =
+             Projects.put_model_override(context.project, :people_relations, %{
+               model: "gpt-analysis-frozen",
+               params: %{"reasoning" => %{"effort" => "low"}}
+             })
+
+    assert {:ok, first_run, first_nodes} =
+             DAG.start(context.project, [context.source.id], provider_mode: :openai)
+
+    first_node = Enum.find(first_nodes, &(&1.node_key == "people_relations"))
+    assert first_node.input_snapshot["task_config"]["model"] == "gpt-analysis-frozen"
+    assert first_node.input_snapshot["task_config"]["params"]["reasoning"]["effort"] == "low"
+
+    assert {:ok, :openai, execution_opts} = AnalysisNodeJob.execution_options(first_node)
+    assert execution_opts[:task_override].model == "gpt-analysis-frozen"
+    assert execution_opts[:task_override].params["reasoning"]["effort"] == "low"
+
+    assert {:ok, _override} =
+             Projects.put_model_override(context.project, :people_relations, %{
+               model: "gpt-analysis-new",
+               params: %{"reasoning" => %{"effort" => "high"}}
+             })
+
+    assert {:ok, second_run, second_nodes} =
+             DAG.start(context.project, [context.source.id], provider_mode: :openai)
+
+    refute second_run.id == first_run.id
+    assert first_node.input_snapshot["task_config"]["model"] == "gpt-analysis-frozen"
+
+    second_node = Enum.find(second_nodes, &(&1.node_key == "people_relations"))
+    assert second_node.input_snapshot["task_config"]["model"] == "gpt-analysis-new"
+
+    owner = self()
+
+    submitter = fn snapshot, _attempt ->
+      send(owner, {:submitted_with, snapshot.model, snapshot.params})
+      {:error, :provider_rejected, %{}}
+    end
+
+    assert {:ok, running} = Workflow.transition_node(first_node, :running)
+
+    assert {:error, :provider_rejected, _details} =
+             Analysis.perform_node(
+               running,
+               context.project,
+               :openai,
+               Keyword.put(execution_opts, :submitter, submitter)
+             )
+
+    assert_receive {:submitted_with, "gpt-analysis-frozen", frozen_params}
+    assert frozen_params["reasoning"]["effort"] == "low"
+  end
+
+  test "analysis worker rejects legacy nodes without a frozen execution snapshot", context do
+    assert {:ok, run} =
+             Workflow.create_run(
+               context.project,
+               "whole_novel_analysis_v1",
+               %{"source_revision_ids" => [context.source.id]},
+               "legacy-unfrozen-analysis"
+             )
+
+    assert {:ok, node} =
+             Workflow.add_node(
+               run,
+               "people_relations",
+               %{"provider_mode" => "openai", "project_id" => context.project.id},
+               []
+             )
+
+    assert {:error, :execution_snapshot_missing} = AnalysisNodeJob.execution_options(node)
+  end
+
+  test "submitted orphan attempts become unknown instead of being resubmitted", context do
+    assert {:ok, run, nodes} = DAG.start(context.project, [context.source.id])
+    node = Enum.find(nodes, &(&1.node_key == "people_relations"))
+    assert {:ok, running} = Workflow.transition_node(node, :running)
+
+    assert {:ok, spec} =
+             Generation.create_spec(context.project, %{
+               kind: running.node_key,
+               payload: %{"node_run_id" => running.id, "node_run_count" => running.run_count}
+             })
+
+    assert {:ok, _snapshot, prepared} =
+             Generation.prepare_attempt(spec, :people_relations, context.project, %{
+               task_override: %{
+                 adapter: "fixture",
+                 credential_ref: "none",
+                 model: "fixture-analysis-v1"
+               },
+               node_run_id: running.id,
+               request_input: %{"input" => "fixture"},
+               prompt_snapshot: %{}
+             })
+
+    assert {:ok, submitted} = Generation.transition_attempt(prepared, :submitted)
+    assert {:ok, _failed_run} = Workflow.mark_run(run, :failed)
+
+    assert {:error, :unknown_remote_state} =
+             Analysis.enqueue(context.project, [context.source.id], provider_mode: :fake)
+
+    assert Repo.get!(Attempt, submitted.id).status == :unknown_remote_state
+
+    stored = Repo.get!(NodeRun, running.id)
+    assert stored.status == :failed
+    assert stored.error_code == "unknown_remote_state"
+    assert stored.active_job_id == nil
+    assert Repo.get!(WorkflowRun, run.id).status == :failed
+    assert Repo.aggregate(Oban.Job, :count) == 0
+  end
+
+  test "an unknown failed node remains stable when no Attempt record is available", context do
+    assert {:ok, run, nodes} = DAG.start(context.project, [context.source.id])
+    node = Enum.find(nodes, &(&1.node_key == "people_relations"))
+    assert {:ok, running} = Workflow.transition_node(node, :running)
+
+    assert {:ok, failed} =
+             Workflow.transition_node(running, :failed, %{
+               error_code: "unknown_remote_state"
+             })
+
+    assert {:ok, _failed_run} = Workflow.mark_run(run, :failed)
+
+    assert {:error, :unknown_remote_state} =
+             Analysis.enqueue(context.project, [context.source.id], provider_mode: :fake)
+
+    assert Repo.get!(NodeRun, failed.id).status == :failed
+    assert Repo.get!(NodeRun, failed.id).error_code == "unknown_remote_state"
+    assert Repo.aggregate(Oban.Job, :count) == 0
+  end
+
   test "root job insertion failure rolls back the entire analysis topology", context do
     assert {:error, %Ecto.Changeset{valid?: false}} =
              Analysis.enqueue(context.project, [context.source.id], job_options: [priority: 99])
@@ -159,6 +384,81 @@ defmodule Dramatizer.Analysis.DAGTest do
     assert {:ok, recovered_result} = Analysis.perform_node(running, context.project, :fake)
     assert recovered_result == first_result
     assert Repo.aggregate(Attempt, :count) == attempt_count
+  end
+
+  test "ownership recovery reuses a succeeded provider attempt across node run counts", context do
+    assert {:ok, run, nodes} =
+             DAG.start(context.project, [context.source.id], provider_mode: :fake)
+
+    node = Enum.find(nodes, &(&1.node_key == "people_relations"))
+    assert {:ok, running} = Workflow.transition_node(node, :running)
+    assert {:ok, _result} = Analysis.perform_node(running, context.project, :fake)
+
+    assert Repo.aggregate(
+             from(attempt in Attempt, where: attempt.node_run_id == ^running.id),
+             :count
+           ) ==
+             1
+
+    assert {:ok, _failed_run} = Workflow.mark_run(run, :failed)
+
+    assert {:ok, resumed} =
+             Analysis.enqueue(context.project, [context.source.id], provider_mode: :fake)
+
+    assert resumed.id == run.id
+    assert Repo.get!(NodeRun, running.id).run_count == 2
+
+    assert %{failure: 0, snoozed: 0, success: 6} =
+             Oban.drain_queue(queue: :workflow, with_recursion: true, with_safety: false)
+
+    assert Repo.get!(NodeRun, running.id).status == :succeeded
+
+    assert Repo.aggregate(
+             from(attempt in Attempt, where: attempt.node_run_id == ^running.id),
+             :count
+           ) ==
+             1
+  end
+
+  test "retry refuses a failed node whose provider outcome is unknown", context do
+    assert {:ok, run, nodes} =
+             DAG.start(context.project, [context.source.id], provider_mode: :fake)
+
+    node = Enum.find(nodes, &(&1.node_key == "people_relations"))
+    assert {:ok, running} = Workflow.transition_node(node, :running)
+
+    assert {:ok, spec} =
+             Generation.create_spec(context.project, %{
+               kind: running.node_key,
+               payload: %{"node_run_id" => running.id}
+             })
+
+    assert {:ok, _snapshot, prepared} =
+             Generation.prepare_attempt(spec, :people_relations, context.project, %{
+               task_override: %{
+                 adapter: "fixture",
+                 credential_ref: "none",
+                 model: "fixture-analysis-v1"
+               },
+               node_run_id: running.id,
+               request_input: %{"input" => "fixture"},
+               prompt_snapshot: %{}
+             })
+
+    assert {:ok, submitted} = Generation.transition_attempt(prepared, :submitted)
+
+    assert {:ok, failed} =
+             Workflow.transition_node(running, :failed, %{error_code: "provider_failed"})
+
+    assert {:ok, _failed_run} = Workflow.mark_run(run, :failed)
+
+    assert {:error, :unknown_remote_state} = Analysis.retry_node(failed)
+    assert Repo.get!(Attempt, submitted.id).status == :unknown_remote_state
+
+    assert %NodeRun{status: :failed, error_code: "unknown_remote_state"} =
+             Repo.get!(NodeRun, failed.id)
+
+    assert Repo.aggregate(Oban.Job, :count) == 0
   end
 
   test "remote submission timeout is not retried as a new analysis Attempt", context do

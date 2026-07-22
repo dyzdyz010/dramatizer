@@ -60,7 +60,13 @@ defmodule Dramatizer.Generation do
 
   def prepare_attempt(%GenerationSpec{} = spec, task_type, %Project{} = project, options) do
     task_override = Map.get(options, :task_override, %{})
-    config = ConfigResolver.resolve(task_type, project, task_override)
+
+    config =
+      case Map.get(options, :resolved_task_config) do
+        %{} = resolved -> resolved |> Map.new() |> Map.put(:task_type, task_type)
+        nil -> ConfigResolver.resolve(task_type, project, task_override)
+      end
+
     safe_input = options |> Map.fetch!(:request_input) |> redact()
 
     prompt_snapshot =
@@ -190,16 +196,18 @@ defmodule Dramatizer.Generation do
   @doc false
   def reconcile_guard_failure(%NodeRun{id: node_run_id}, reason, details)
       when reason in @guard_failures and is_map(details) do
-    latest_submitted =
+    latest_uncertain =
       Repo.one(
         from attempt in Attempt,
-          where: attempt.node_run_id == ^node_run_id and attempt.status == :submitted,
+          where:
+            attempt.node_run_id == ^node_run_id and
+              attempt.status in [:submitted, :unknown_remote_state],
           order_by: [desc: attempt.attempt_number, desc: attempt.inserted_at],
           limit: 1
       )
 
-    case latest_submitted do
-      %Attempt{} = attempt ->
+    case latest_uncertain do
+      %Attempt{status: :submitted} = attempt ->
         case transition_attempt(attempt, :unknown_remote_state, %{
                error_code: "unknown_remote_state",
                error_message: "provider outcome is unknown after submitted worker interruption",
@@ -211,6 +219,9 @@ defmodule Dramatizer.Generation do
           {:error, _transition_reason} ->
             {reason, details}
         end
+
+      %Attempt{status: :unknown_remote_state} = attempt ->
+        {:unknown_remote_state, Map.put(details, "attempt_id", attempt.id)}
 
       nil ->
         {reason, details}

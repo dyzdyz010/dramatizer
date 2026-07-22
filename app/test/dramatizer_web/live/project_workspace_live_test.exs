@@ -5,7 +5,8 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
   import Ecto.Query
 
   alias Dramatizer.Assets
-  alias Dramatizer.Analysis.AnalysisSnapshot
+  alias Dramatizer.Analysis.{AnalysisSnapshot, DAG}
+  alias Dramatizer.Analysis.Jobs.AnalysisNodeJob
   alias Dramatizer.Projects
   alias Dramatizer.Assets.AssetVersion
   alias Dramatizer.Costs
@@ -13,6 +14,7 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
   alias Dramatizer.Generation.{Attempt, GenerationSpec}
   alias Dramatizer.Quality.SelectionDecision
   alias Dramatizer.Revisions.Draft
+  alias Dramatizer.Sources
   alias Dramatizer.Sources.SourceRevision
   alias Dramatizer.Timeline.{Clip, RenderManifest, SubtitleCue, Timeline}
   alias Dramatizer.Workflow.InboxMessage
@@ -64,6 +66,206 @@ defmodule DramatizerWeb.ProjectWorkspaceLiveTest do
     assert Subscription.slice_for(%{resource: :timeline}) == :timeline
     assert Subscription.slice_for(%{resource: :workflow}) == :execution
     assert Subscription.slice_for(%{resource: :unexpected}) == :ignore
+  end
+
+  test "failed analysis nodes retry through the analysis worker without crashing LiveView", %{
+    conn: conn,
+    project: project
+  } do
+    fixture = Path.expand("../../support/fixtures/sources/novel.txt", __DIR__)
+    assert {:ok, _document, source} = Sources.import(project, fixture)
+    assert {:ok, run, nodes} = DAG.start(project, [source.id])
+    root = Enum.find(nodes, &(&1.node_key == "people_relations"))
+    assert {:ok, running} = Workflow.transition_node(root, :running)
+
+    assert {:ok, failed} =
+             Workflow.transition_node(running, :failed, %{error_code: "provider_failed"})
+
+    assert failed.worker == nil
+    assert {:ok, _failed_run} = Workflow.mark_run(run, :failed)
+
+    {:ok, view, _html} = live(conn, "/projects/#{project.id}/analysis")
+    render_click(view, "retry-node", %{"id" => failed.id})
+
+    recovered = Repo.get!(Workflow.NodeRun, failed.id)
+    assert recovered.status == :queued
+    assert recovered.worker == inspect(AnalysisNodeJob)
+    assert is_integer(recovered.active_job_id)
+    assert Repo.get!(Workflow.WorkflowRun, run.id).status == :running
+  end
+
+  test "legacy active analysis does not block a new Fake execution identity", %{
+    conn: conn,
+    project: project
+  } do
+    fixture = Path.expand("../../support/fixtures/sources/novel.txt", __DIR__)
+    assert {:ok, _document, source} = Sources.import(project, fixture)
+
+    assert {:ok, legacy_run} =
+             Workflow.create_run(
+               project,
+               "whole_novel_analysis_v1",
+               %{
+                 "source_revision_ids" => [source.id],
+                 "source_content_hash" => source.content_hash,
+                 "strategy" => "whole_document"
+               },
+               "legacy-analysis"
+             )
+
+    assert {:ok, _legacy_running} = Workflow.mark_run(legacy_run, :running)
+
+    {:ok, view, _html} = live(conn, "/projects/#{project.id}/analysis")
+    refute has_element?(view, "button[phx-click='start-analysis'][disabled]")
+
+    render_click(view, "start-analysis", %{})
+
+    assert Repo.aggregate(
+             from(run in Workflow.WorkflowRun,
+               where:
+                 run.project_id == ^project.id and
+                   run.definition_key == "whole_novel_analysis_v1"
+             ),
+             :count
+           ) == 2
+  end
+
+  test "an active analysis with stale same-provider config does not block a new run", %{
+    conn: conn,
+    project: project
+  } do
+    previous_mode = Application.fetch_env!(:dramatizer, :provider_mode)
+    Application.put_env(:dramatizer, :provider_mode, :openai)
+    on_exit(fn -> Application.put_env(:dramatizer, :provider_mode, previous_mode) end)
+
+    fixture = Path.expand("../../support/fixtures/sources/novel.txt", __DIR__)
+    assert {:ok, _document, source} = Sources.import(project, fixture)
+
+    assert {:ok, _override} =
+             Projects.put_model_override(project, :people_relations, %{model: "gpt-config-a"})
+
+    assert {:ok, first_run} =
+             Dramatizer.Analysis.enqueue(project, [source.id], provider_mode: :openai)
+
+    assert first_run.status == :running
+
+    assert {:ok, _override} =
+             Projects.put_model_override(project, :people_relations, %{model: "gpt-config-b"})
+
+    {:ok, view, _html} = live(conn, "/projects/#{project.id}/analysis")
+    refute has_element?(view, "button[phx-click='start-analysis'][disabled]")
+  end
+
+  test "historical failed analysis nodes do not override the latest successful analysis", %{
+    conn: conn,
+    project: project
+  } do
+    fixture = Path.expand("../../support/fixtures/sources/novel.txt", __DIR__)
+    assert {:ok, _document, source} = Sources.import(project, fixture)
+
+    assert {:ok, old_run} =
+             Workflow.create_run(
+               project,
+               "whole_novel_analysis_v1",
+               %{"source_revision_ids" => [source.id]},
+               "old-analysis-failure"
+             )
+
+    assert {:ok, old_node} = Workflow.add_node(old_run, "people_relations", %{}, [])
+    assert {:ok, old_running} = Workflow.transition_node(old_node, :running)
+
+    assert {:ok, _old_failed} =
+             Workflow.transition_node(old_running, :failed, %{error_code: "provider_failed"})
+
+    assert {:ok, _old_failed_run} = Workflow.mark_run(old_run, :failed)
+
+    assert {:ok, _new_run} = Dramatizer.Analysis.enqueue(project, [source.id])
+
+    assert %{failure: 0, snoozed: 0, success: 6} =
+             Oban.drain_queue(queue: :workflow, with_recursion: true, with_safety: false)
+
+    {:ok, view, _html} = live(conn, "/projects/#{project.id}/analysis")
+    assert has_element?(view, "[data-stage='analysis'][data-state='ready']")
+  end
+
+  test "a latest failed analysis run cannot appear ready from an older snapshot", %{
+    conn: conn,
+    project: project
+  } do
+    fixture = Path.expand("../../support/fixtures/sources/novel.txt", __DIR__)
+    assert {:ok, _document, source} = Sources.import(project, fixture)
+    assert {:ok, successful_run} = Dramatizer.Analysis.enqueue(project, [source.id])
+
+    assert %{failure: 0, snoozed: 0, success: 6} =
+             Oban.drain_queue(queue: :workflow, with_recursion: true, with_safety: false)
+
+    assert Repo.get_by!(AnalysisSnapshot, workflow_run_id: successful_run.id)
+
+    assert {:ok, latest_run} =
+             Workflow.create_run(
+               project,
+               "whole_novel_analysis_v1",
+               %{
+                 "source_revision_ids" => [source.id],
+                 "execution" => %{"provider_mode" => "fake", "revision" => 2}
+               },
+               "latest-analysis-failure"
+             )
+
+    assert {:ok, _latest_failed} = Workflow.mark_run(latest_run, :failed)
+
+    {:ok, view, _html} = live(conn, "/projects/#{project.id}/analysis")
+    assert has_element?(view, "[data-stage='analysis'][data-state='failed']")
+    refute has_element?(view, "[data-stage='analysis'][data-state='ready']")
+    refute has_element?(view, "[data-analysis-group]")
+
+    {:ok, episodes, _html} = live(conn, "/projects/#{project.id}/episodes")
+    refute has_element?(episodes, "button[phx-click='select-episode']")
+
+    render_click(episodes, "select-episode", %{"candidate-id" => "episode:001"})
+    assert render(episodes) =~ "请先完成全文分析"
+
+    assert Repo.aggregate(
+             from(run in Workflow.WorkflowRun,
+               where:
+                 run.project_id == ^project.id and
+                   run.definition_key == "structured_proposal_v1"
+             ),
+             :count
+           ) == 0
+  end
+
+  test "a mounted episodes page drops old candidates as soon as a newer analysis is enqueued", %{
+    conn: conn,
+    project: project
+  } do
+    fixture = Path.expand("../../support/fixtures/sources/novel.txt", __DIR__)
+    assert {:ok, _document, source} = Sources.import(project, fixture)
+    assert {:ok, _successful_run} = Dramatizer.Analysis.enqueue(project, [source.id])
+
+    assert %{failure: 0, snoozed: 0, success: 6} =
+             Oban.drain_queue(queue: :workflow, with_recursion: true, with_safety: false)
+
+    {:ok, episodes, _html} = live(conn, "/projects/#{project.id}/episodes")
+    assert has_element?(episodes, "button[phx-click='select-episode']")
+
+    assert {:ok, newer_run} =
+             Dramatizer.Analysis.enqueue(project, [source.id], provider_mode: :openai)
+
+    assert newer_run.status == :running
+    refute has_element?(episodes, "button[phx-click='select-episode']")
+
+    render_click(episodes, "select-episode", %{"candidate-id" => "episode:001"})
+    assert render(episodes) =~ "请先完成全文分析"
+
+    assert Repo.aggregate(
+             from(run in Workflow.WorkflowRun,
+               where:
+                 run.project_id == ^project.id and
+                   run.definition_key == "structured_proposal_v1"
+             ),
+             :count
+           ) == 0
   end
 
   test "run center distinguishes queued work from unknown remote outcomes" do

@@ -2,10 +2,13 @@ defmodule Dramatizer.Execution.ReconcilerJobTest do
   use Dramatizer.DataCase, async: false
 
   alias Dramatizer.Execution.ReconcilerJob
+  alias Dramatizer.Generation
+  alias Dramatizer.Generation.Attempt
   alias Dramatizer.Projects
   alias Dramatizer.Repo
   alias Dramatizer.Workflow
   alias Dramatizer.Workflow.NodeRun
+  alias Dramatizer.Workflow.WorkflowRun
   alias Dramatizer.Workflow.Jobs.NodeJob
 
   test "Oban worker completes after a reconciliation pass" do
@@ -13,8 +16,8 @@ defmodule Dramatizer.Execution.ReconcilerJobTest do
   end
 
   test "extends executing jobs and preserves jobs Oban can still run" do
-    {_run, executing_node} = create_node("executing")
-    {_run, retryable_node} = create_node("retryable")
+    {executing_run, executing_node} = create_node("executing")
+    {retryable_run, retryable_node} = create_node("retryable")
     executing_job = insert_job(executing_node)
     retryable_job = insert_job(retryable_node)
     future = DateTime.add(DateTime.utc_now(), 60, :second)
@@ -23,6 +26,10 @@ defmodule Dramatizer.Execution.ReconcilerJobTest do
     set_job_state(retryable_job, "retryable", future)
     expire(executing_node, executing_job)
     expire(retryable_node, retryable_job)
+    assert {:ok, executing_failed} = Workflow.mark_run(executing_run, :failed)
+    assert {:ok, retryable_failed} = Workflow.mark_run(retryable_run, :failed)
+    assert executing_failed.completed_at
+    assert retryable_failed.completed_at
 
     assert {:ok, %{extended: 1, preserved: 1, requeued: 0, failed: 0}} =
              ReconcilerJob.reconcile()
@@ -35,10 +42,16 @@ defmodule Dramatizer.Execution.ReconcilerJobTest do
     assert preserved.status == :queued
     assert preserved.active_job_id == retryable_job.id
     assert preserved.next_retry_at == future
+
+    assert %WorkflowRun{status: :running, completed_at: nil} =
+             Repo.get!(WorkflowRun, executing_run.id)
+
+    assert %WorkflowRun{status: :running, completed_at: nil} =
+             Repo.get!(WorkflowRun, retryable_run.id)
   end
 
   test "requeues an orphan through its registered worker" do
-    {_run, node} = create_node("orphan")
+    {run, node} = create_node("orphan")
 
     node
     |> Ecto.Changeset.change(%{
@@ -48,6 +61,9 @@ defmodule Dramatizer.Execution.ReconcilerJobTest do
       lease_expires_at: DateTime.add(DateTime.utc_now(), -60, :second)
     })
     |> Repo.update!()
+
+    assert {:ok, failed_run} = Workflow.mark_run(run, :failed)
+    assert failed_run.completed_at
 
     assert {:ok, %{extended: 0, preserved: 0, requeued: 1, failed: 0}} =
              ReconcilerJob.reconcile()
@@ -62,6 +78,7 @@ defmodule Dramatizer.Execution.ReconcilerJobTest do
 
     assert worker == inspect(NodeJob)
     assert node_id == node.id
+    assert %WorkflowRun{status: :running, completed_at: nil} = Repo.get!(WorkflowRun, run.id)
   end
 
   test "fails exhausted or unregistered orphan nodes without executing arbitrary modules" do
@@ -79,6 +96,103 @@ defmodule Dramatizer.Execution.ReconcilerJobTest do
 
     assert %NodeRun{status: :failed, error_code: "execution_worker_unavailable"} =
              Repo.get!(NodeRun, unregistered.id)
+  end
+
+  test "ownershipless submitted nodes become unknown and fail their workflow" do
+    {run, node} = create_node("submitted-orphan")
+    assert {:ok, running} = Workflow.transition_node(node, :running)
+    assert {:ok, _running_run} = Workflow.mark_run(run, :running)
+
+    assert {:ok, spec} =
+             Generation.create_spec(Projects.get_project!(run.project_id), %{
+               kind: running.node_key,
+               payload: %{"node_run_id" => running.id}
+             })
+
+    assert {:ok, _snapshot, prepared} =
+             Generation.prepare_attempt(
+               spec,
+               :people_relations,
+               Projects.get_project!(run.project_id),
+               %{
+                 task_override: %{
+                   adapter: "fixture",
+                   credential_ref: "none",
+                   model: "fixture-analysis-v1"
+                 },
+                 node_run_id: running.id,
+                 request_input: %{"input" => "fixture"},
+                 prompt_snapshot: %{}
+               }
+             )
+
+    assert {:ok, submitted} = Generation.transition_attempt(prepared, :submitted)
+
+    assert {:ok, %{extended: 0, preserved: 0, requeued: 0, failed: 1}} =
+             ReconcilerJob.reconcile()
+
+    assert %Attempt{status: :unknown_remote_state, error_code: "unknown_remote_state"} =
+             Repo.get!(Attempt, submitted.id)
+
+    assert %NodeRun{status: :failed, error_code: "unknown_remote_state"} =
+             Repo.get!(NodeRun, running.id)
+
+    assert %WorkflowRun{status: :failed} = Repo.get!(WorkflowRun, run.id)
+  end
+
+  test "an already unknown provider attempt is never requeued" do
+    {run, node} = create_node("unknown-attempt")
+
+    running =
+      node
+      |> Ecto.Changeset.change(%{
+        status: :running,
+        worker: inspect(NodeJob),
+        active_job_id: nil,
+        lease_expires_at: nil
+      })
+      |> Repo.update!()
+
+    assert {:ok, spec} =
+             Generation.create_spec(Projects.get_project!(run.project_id), %{
+               kind: running.node_key,
+               payload: %{"node_run_id" => running.id}
+             })
+
+    assert {:ok, _snapshot, prepared} =
+             Generation.prepare_attempt(
+               spec,
+               :people_relations,
+               Projects.get_project!(run.project_id),
+               %{
+                 task_override: %{
+                   adapter: "fixture",
+                   credential_ref: "none",
+                   model: "fixture-analysis-v1"
+                 },
+                 node_run_id: running.id,
+                 request_input: %{"input" => "fixture"},
+                 prompt_snapshot: %{}
+               }
+             )
+
+    assert {:ok, submitted} = Generation.transition_attempt(prepared, :submitted)
+
+    assert {:unknown_remote_state, _details} =
+             Generation.reconcile_guard_failure(running, :worker_exit, %{})
+
+    assert Repo.get!(Attempt, submitted.id).status == :unknown_remote_state
+
+    assert {:ok, %{extended: 0, preserved: 0, requeued: 0, failed: 1}} =
+             ReconcilerJob.reconcile()
+
+    assert %Attempt{status: :unknown_remote_state} = Repo.get!(Attempt, submitted.id)
+
+    assert %NodeRun{status: :failed, error_code: "unknown_remote_state"} =
+             Repo.get!(NodeRun, running.id)
+
+    assert %WorkflowRun{status: :failed} = Repo.get!(WorkflowRun, run.id)
+    assert Repo.aggregate(Oban.Job, :count) == 0
   end
 
   defp create_node(key) do

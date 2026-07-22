@@ -26,16 +26,42 @@ defmodule Dramatizer.Analysis do
       when is_list(source_revision_ids) and source_revision_ids != [] do
     result =
       Repo.transaction(fn ->
-        with {:ok, run, nodes} <- DAG.start(project, source_revision_ids),
-             {:ok, running} <- ensure_running(run),
-             {:ok, executions} <- enqueue_roots(nodes, opts) do
-          %{run: running, executions: executions}
+        with {:ok, run, nodes} <- DAG.start(project, source_revision_ids, opts) do
+          current_run = lock_run(run.id)
+
+          case resume_nodes(current_run, nodes) do
+            {:ok, resumable_nodes} ->
+              with {:ok, running} <- ensure_running(current_run),
+                   {:ok, executions} <- enqueue_runnable(resumable_nodes, opts) do
+                %{run: running, executions: executions, notifications: []}
+              else
+                {:error, reason} -> Repo.rollback(reason)
+              end
+
+            {:unknown_remote_state, normalized_nodes} ->
+              case Workflow.mark_run(current_run, :failed) do
+                {:ok, failed_run} ->
+                  %{
+                    run: failed_run,
+                    executions: [],
+                    notifications: normalized_nodes,
+                    error: :unknown_remote_state
+                  }
+
+                {:error, reason} ->
+                  Repo.rollback(reason)
+              end
+          end
         else
           {:error, reason} -> Repo.rollback(reason)
         end
       end)
 
     case result do
+      {:ok, %{error: reason, notifications: notifications}} ->
+        Enum.each(notifications, &Enqueue.notify/1)
+        {:error, reason}
+
       {:ok, %{run: run, executions: executions}} ->
         Enum.each(executions, &Enqueue.notify(&1.node))
         {:ok, run}
@@ -46,6 +72,62 @@ defmodule Dramatizer.Analysis do
   end
 
   def enqueue(%Project{}, [], _opts), do: {:error, :source_revision_required}
+
+  def retry_node(%NodeRun{id: node_id}, opts \\ []) do
+    result =
+      Repo.transaction(fn ->
+        node_snapshot = Repo.get!(NodeRun, node_id)
+
+        run = lock_run(node_snapshot.workflow_run_id)
+        nodes = locked_nodes(run.id)
+        node = Enum.find(nodes, &(&1.id == node_id))
+
+        cond do
+          run.definition_key != "whole_novel_analysis_v1" ->
+            Repo.rollback(:not_analysis_node)
+
+          node.status != :failed ->
+            Repo.rollback(:node_not_failed)
+
+          unknown_remote_orphan?(node) ->
+            normalized = normalize_unknown_remote_node!(node)
+
+            case Workflow.mark_run(run, :failed) do
+              {:ok, _failed_run} -> %{error: :unknown_remote_state, node: normalized}
+              {:error, reason} -> Repo.rollback(reason)
+            end
+
+          not dependencies_succeeded?(node, nodes) ->
+            Repo.rollback(:node_dependencies_incomplete)
+
+          true ->
+            with {:ok, queued} <- recover_locked_node(node),
+                 {:ok, _running_run} <- Workflow.mark_run(run, :running),
+                 {:ok, execution} <-
+                   Enqueue.node(queued, AnalysisNodeJob,
+                     job_options: Keyword.get(opts, :job_options, []),
+                     notify: false
+                   ) do
+              execution
+            else
+              {:error, reason} -> Repo.rollback(reason)
+            end
+        end
+      end)
+
+    case result do
+      {:ok, %{error: reason, node: node}} ->
+        Enqueue.notify(node)
+        {:error, reason}
+
+      {:ok, execution} ->
+        Enqueue.notify(execution.node)
+        {:ok, execution.node}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
 
   def run_node(%NodeRun{} = node, %Project{} = project, fixture_outputs)
       when is_list(fixture_outputs) do
@@ -116,7 +198,6 @@ defmodule Dramatizer.Analysis do
 
     spec_payload = %{
       "node_run_id" => node.id,
-      "node_run_count" => node.run_count,
       "repair_index" => index,
       "input_hash" => node.input_hash,
       "validation_errors" => stringify(previous_errors)
@@ -135,24 +216,32 @@ defmodule Dramatizer.Analysis do
         do: %{adapter: "fixture", credential_ref: "none", model: "fixture-analysis-v1"},
         else: Keyword.get(opts, :task_override, %{})
 
+    attempt_options = %{
+      task_override: override,
+      node_run_id: node.id,
+      request_input: request_input,
+      prompt_snapshot: %{
+        "core_version" => prompt.core_version,
+        "core_hash" => prompt.core_hash,
+        "appendix_revision_id" => prompt.appendix_revision_id,
+        "appendix_revision" => prompt.appendix_revision,
+        "appendix_hash" => prompt.appendix_hash,
+        "content_hash" => prompt.content_hash,
+        "schema_version" => Schemas.version(),
+        "schema_hash" => CanonicalJSON.hash(schema)
+      }
+    }
+
+    attempt_options =
+      case Keyword.get(opts, :resolved_task_config) do
+        %{} = resolved -> Map.put(attempt_options, :resolved_task_config, resolved)
+        _missing -> attempt_options
+      end
+
     with {:ok, spec} <-
            Generation.create_spec(project, %{kind: node.node_key, payload: spec_payload}),
          {:ok, snapshot, _first_attempt} <-
-           Generation.prepare_attempt(spec, task_type, project, %{
-             task_override: override,
-             node_run_id: node.id,
-             request_input: request_input,
-             prompt_snapshot: %{
-               "core_version" => prompt.core_version,
-               "core_hash" => prompt.core_hash,
-               "appendix_revision_id" => prompt.appendix_revision_id,
-               "appendix_revision" => prompt.appendix_revision,
-               "appendix_hash" => prompt.appendix_hash,
-               "content_hash" => prompt.content_hash,
-               "schema_version" => Schemas.version(),
-               "schema_hash" => CanonicalJSON.hash(schema)
-             }
-           }) do
+           Generation.prepare_attempt(spec, task_type, project, attempt_options) do
       current_snapshot_ids = snapshot_ids ++ [snapshot.id]
 
       case runnable_attempt(snapshot) do
@@ -354,9 +443,9 @@ defmodule Dramatizer.Analysis do
   defp public_error_code(:structured_validation_failed), do: :structured_validation_failed
   defp public_error_code(_provider_error), do: :provider_failed
 
-  defp enqueue_roots(nodes, opts) do
+  defp enqueue_runnable(nodes, opts) do
     nodes
-    |> Enum.filter(&(&1.status == :queued and &1.required_parent_keys == []))
+    |> Enum.filter(&(&1.status == :queued and dependencies_succeeded?(&1, nodes)))
     |> Enum.reduce_while({:ok, []}, fn node, {:ok, executions} ->
       case Enqueue.node(node, AnalysisNodeJob,
              job_options: Keyword.get(opts, :job_options, []),
@@ -370,6 +459,137 @@ defmodule Dramatizer.Analysis do
       {:ok, executions} -> {:ok, Enum.reverse(executions)}
       error -> error
     end)
+  end
+
+  defp resume_nodes(%WorkflowRun{status: :succeeded}, nodes), do: {:ok, nodes}
+
+  defp resume_nodes(%WorkflowRun{id: run_id}, _nodes) do
+    nodes = locked_nodes(run_id)
+    unknown_nodes = Enum.filter(nodes, &unknown_remote_orphan?/1)
+
+    if unknown_nodes == [] do
+      Enum.reduce_while(nodes, {:ok, []}, fn node, {:ok, recovered} ->
+        if recoverable?(node, nodes) do
+          case recover_locked_node(node) do
+            {:ok, queued} -> {:cont, {:ok, [queued | recovered]}}
+            {:error, reason} -> {:halt, {:error, reason}}
+          end
+        else
+          {:cont, {:ok, [node | recovered]}}
+        end
+      end)
+      |> then(fn
+        {:ok, recovered} -> {:ok, Enum.reverse(recovered)}
+        error -> error
+      end)
+    else
+      normalized = Enum.map(unknown_nodes, &normalize_unknown_remote_node!/1)
+      {:unknown_remote_state, normalized}
+    end
+  end
+
+  defp locked_nodes(run_id) do
+    Repo.all(
+      from node in NodeRun,
+        where: node.workflow_run_id == ^run_id,
+        order_by: [asc: node.inserted_at],
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp lock_run(run_id) do
+    Repo.one!(
+      from run in WorkflowRun,
+        where: run.id == ^run_id,
+        lock: "FOR UPDATE"
+    )
+  end
+
+  defp recoverable?(%NodeRun{status: :failed} = node, nodes),
+    do: dependencies_succeeded?(node, nodes)
+
+  defp recoverable?(%NodeRun{status: :running} = node, nodes) do
+    (is_nil(node.worker) or is_nil(node.active_job_id)) and dependencies_succeeded?(node, nodes)
+  end
+
+  defp recoverable?(%NodeRun{}, _nodes), do: false
+
+  defp unknown_remote_orphan?(%NodeRun{status: :running} = node) do
+    (is_nil(node.worker) or is_nil(node.active_job_id)) and
+      not is_nil(unknown_remote_attempt(node))
+  end
+
+  defp unknown_remote_orphan?(%NodeRun{status: :failed} = node),
+    do: node.error_code == "unknown_remote_state" or not is_nil(unknown_remote_attempt(node))
+
+  defp unknown_remote_orphan?(%NodeRun{}), do: false
+
+  defp unknown_remote_attempt(node) do
+    Repo.one(
+      from attempt in Attempt,
+        where:
+          attempt.node_run_id == ^node.id and
+            attempt.status in [:submitted, :unknown_remote_state],
+        order_by: [desc: attempt.inserted_at, desc: attempt.attempt_number],
+        limit: 1
+    )
+  end
+
+  defp normalize_unknown_remote_node!(node) do
+    case unknown_remote_attempt(node) do
+      nil ->
+        node
+
+      attempt ->
+        if attempt.status == :submitted do
+          {:ok, _unknown} =
+            Generation.transition_attempt(attempt, :unknown_remote_state, %{
+              error_code: "unknown_remote_state",
+              error_message: "provider outcome is unknown after execution ownership was lost"
+            })
+        end
+
+        case node.status do
+          :running ->
+            {:ok, failed} =
+              Workflow.transition_locked(node, :failed, %{
+                error_code: "unknown_remote_state",
+                result: %{"attempt_id" => attempt.id}
+              })
+
+            failed
+
+          :failed ->
+            node
+            |> NodeRun.transition_changeset(%{
+              status: :failed,
+              error_code: "unknown_remote_state",
+              result: Map.put(node.result || %{}, "attempt_id", attempt.id)
+            })
+            |> Repo.update!()
+        end
+    end
+  end
+
+  defp recover_locked_node(node) do
+    Workflow.transition_locked(node, :queued, %{
+      run_count: node.run_count + 1,
+      error_code: nil,
+      result: %{},
+      worker: nil,
+      active_job_id: nil,
+      lease_expires_at: nil,
+      next_retry_at: nil,
+      started_at: nil,
+      completed_at: nil
+    })
+  end
+
+  defp dependencies_succeeded?(%NodeRun{required_parent_keys: []}, _nodes), do: true
+
+  defp dependencies_succeeded?(node, nodes) do
+    statuses = Map.new(nodes, &{&1.node_key, &1.status})
+    Enum.all?(node.required_parent_keys, &(Map.get(statuses, &1) == :succeeded))
   end
 
   defp compose_prompt!(task_type, node, project) do
